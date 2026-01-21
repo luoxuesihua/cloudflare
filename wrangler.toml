@@ -1,4 +1,4 @@
-name = "suyuan-worker"
+name = "cloudflare"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 
@@ -6,12 +6,12 @@ compatibility_date = "2024-01-01"
 [[d1_databases]]
 binding = "suyuan"
 database_name = "suyuank"
-database_id = "填写你的-D1-UUID"
+database_id = "85ea2866-719e-4fea-a0a1-50737c931724"
 
 # KV 命名空间绑定
 [[kv_namespaces]]
 binding = "suyuankv"
-id = "填写你的-KV-UUID"
+id = "e9a8ddb59a4f46088c440e1cc43ad856"
 
 [vars]
 ENVIRONMENT = "production"
