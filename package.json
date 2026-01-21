@@ -1,17 +1,12 @@
-name = "suyuan-worker"
-main = "src/index.js"
-compatibility_date = "2024-01-01"
-
-# D1 数据库绑定
-[[d1_databases]]
-binding = "suyuan"
-database_name = "suyuan_db"
-database_id = "填写你的-D1-UUID"
-
-# KV 命名空间绑定
-[[kv_namespaces]]
-binding = "suyuankv"
-id = "填写你的-KV-UUID"
-
-[vars]
-ENVIRONMENT = "production"
+{
+  "name": "suyuan-worker",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
