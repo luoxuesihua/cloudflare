@@ -7,6 +7,7 @@ export default {
       if (method === "GET") {
         if (url.pathname === "/") return this.renderUI('login');
         if (url.pathname === "/register") return this.renderUI('register');
+        if (url.pathname === "/docs") return this.renderDocs();
         if (url.pathname === "/admin") return this.renderAdminUI(request, env);
       }
 
@@ -55,8 +56,35 @@ export default {
     const { results } = await env.suyuan.prepare("SELECT id, username, role, created_at FROM users").all();
     let rows = results.map(u => `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.role}</td><td>${u.created_at}</td></tr>`).join('');
     
-    return new Response(this.htmlTemplate(`<h2>Admin</h2><table border="1" style="width:100%">${rows}</table><br><a href="/">Logout</a>`), 
-      { headers: { "Content-Type": "text/html" } });
+    return new Response(this.htmlTemplate(`
+      <h2>Admin Dashboard</h2>
+      <nav>
+        <a href="/docs">View Docs</a> | <a href="/">Logout</a>
+      </nav>
+      <h3>User Management</h3>
+      <table border="1" style="width:100%">${rows}</table>
+    `), { headers: { "Content-Type": "text/html" } });
+  },
+
+  renderDocs() {
+    const docs = [
+      { title: "Opencode Antigravity Auth", url: "https://github.com/NoeFabris/opencode-antigravity-auth", desc: "Authentication system documentation" }
+    ];
+
+    const list = docs.map(d => `
+      <div class="card">
+        <h3><a href="${d.url}" target="_blank">${d.title}</a></h3>
+        <p>${d.desc}</p>
+      </div>
+    `).join('');
+
+    return new Response(this.htmlTemplate(`
+      <h2>Documentation</h2>
+      <nav><a href="/">Home</a></nav>
+      <div class="docs-list">
+        ${list}
+      </div>
+    `), { headers: { "Content-Type": "text/html" } });
   },
 
   async auth(request, env) {
@@ -77,6 +105,9 @@ export default {
       <input type="text" id="u" placeholder="User"><br>
       <input type="password" id="p" placeholder="Pass"><br>
       <button onclick="doAction()">${isLogin ? 'Sign In' : 'Sign Up'}</button>
+      <div style="margin-top: 20px;">
+        <a href="/docs">View Documentation</a>
+      </div>
       <script>
         async function doAction() {
           const res = await fetch('/api/${type}', { method: 'POST', body: JSON.stringify({username: u.value, password: p.value}) });
@@ -91,6 +122,16 @@ export default {
   },
 
   htmlTemplate(content) {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:400px;margin:50px auto;line-height:2}input{width:100%}button{width:105%;background:#0070f3;color:#fff;border:none;padding:10px}</style></head><body>${content}</body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      body{font-family:sans-serif;max-width:400px;margin:50px auto;line-height:2}
+      input{width:100%;box-sizing:border-box;margin-bottom:10px;padding:8px;}
+      button{width:100%;background:#0070f3;color:#fff;border:none;padding:10px;cursor:pointer;}
+      button:hover{background:#0051a2;}
+      .card{border:1px solid #ddd;padding:15px;margin-bottom:10px;border-radius:4px;}
+      .card h3{margin-top:0;}
+      nav{margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #eee;}
+      a{color:#0070f3;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+    </style></head><body>${content}</body></html>`;
   }
 };
