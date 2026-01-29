@@ -5,7 +5,8 @@ export default {
 
     try {
       if (method === "GET") {
-        if (url.pathname === "/") return this.renderUI('login');
+        if (url.pathname === "/") return this.renderBlogList(request, env);
+        if (url.pathname === "/login") return this.renderUI('login');
         if (url.pathname === "/register") return this.renderUI('register');
         if (url.pathname === "/docs") return this.renderDocs();
         if (url.pathname === "/blog") return this.renderBlogList(request, env);
@@ -128,7 +129,7 @@ export default {
     
     const list = filteredResults.map(n => {
       const tagsHtml = (n.tags || '').split(',').filter(t=>t).map(t => 
-        `<a href="/blog?tag=${t.trim()}" class="tag">#${t.trim()}</a>`
+        `<a href="/?tag=${t.trim()}" class="tag">#${t.trim()}</a>`
       ).join(' ');
       
       return `
@@ -145,7 +146,7 @@ export default {
     return new Response(this.htmlTemplate(`
       <header class="page-header">
         <h1>Blog</h1>
-        ${tagFilter ? `<p>Tagged with <strong>#${tagFilter}</strong> <a href="/blog" class="clear-filter">×</a></p>` : ''}
+        ${tagFilter ? `<p>Tagged with <strong>#${tagFilter}</strong> <a href="/" class="clear-filter">×</a></p>` : ''}
       </header>
       <div class="blog-list">
         ${list}
@@ -173,7 +174,7 @@ export default {
         <hr class="divider">
         <div id="content" class="markdown-body">${note.content}</div> <!-- Raw markdown, handled by script -->
         <hr class="divider">
-        <nav class="post-nav"><a href="/blog">← Back to Blog</a></nav>
+        <nav class="post-nav"><a href="/">← Back to Blog</a></nav>
       </article>
       <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
       <script>
@@ -191,7 +192,7 @@ export default {
 
     return new Response(this.htmlTemplate(`
       <h2>Write New Note</h2>
-      <nav><a href="/blog">Back to Blog</a></nav>
+      <nav><a href="/">Back to Blog</a></nav>
       <div class="editor-form">
         <input type="text" id="title" placeholder="Title" class="input-field">
         <input type="text" id="tags" placeholder="Tags (comma separated, e.g. dev, life)" class="input-field">
@@ -247,7 +248,7 @@ export default {
     // Let's do a quick client-side auth check pattern or server check.
     return new Response(this.htmlTemplate(`
       <h2>Profile</h2>
-      <nav><a href="/blog">Back to Blog</a></nav>
+      <nav><a href="/">Back to Blog</a></nav>
       
       <div class="card">
         <h3>Change Password</h3>
@@ -381,8 +382,8 @@ export default {
         <input type="password" id="p" placeholder="Password" class="input-field"><br>
         <button onclick="doAction()" class="btn-primary">${isLogin ? 'Sign In' : 'Sign Up'}</button>
         <div class="auth-links">
-          <a href="/blog">Read Blog</a>
-          <a href="/docs">Documentation</a>
+          ${isLogin ? '<a href="/register">No account? Register</a>' : '<a href="/login">Have account? Login</a>'}
+          | <a href="/">Back to Home</a>
         </div>
       </div>
       <script>
@@ -515,7 +516,7 @@ export default {
 <body>
     <nav>
         <a href="/">Home</a>
-        <a href="/blog">Blog</a>
+        <a href="/login">Login</a>
         <a href="/write">Write</a>
         <a href="/profile">Profile</a>
         <a href="/docs">Docs</a>
