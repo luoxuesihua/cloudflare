@@ -10,6 +10,8 @@ export default {
         if (url.pathname === "/docs") return this.renderDocs();
         if (url.pathname === "/blog") return this.renderBlogList(request, env);
         if (url.pathname === "/write") return this.renderBlogEditor(request, env);
+        if (url.pathname === "/profile") return this.renderProfile(request, env);
+        if (url.pathname === "/admin/users/add") return this.renderAddUser(request, env);
         if (url.pathname.startsWith("/blog/")) {
             const id = url.pathname.split('/')[2];
             if (id) return this.renderBlogView(env, id);
@@ -21,6 +23,8 @@ export default {
         if (url.pathname === "/api/register") return this.handleRegister(request, env);
         if (url.pathname === "/api/login") return this.handleLogin(request, env);
         if (url.pathname === "/api/notes") return this.handleCreateNote(request, env);
+        if (url.pathname === "/api/password") return this.handleChangePassword(request, env);
+        if (url.pathname === "/api/users/add") return this.handleAddUser(request, env);
       }
       return new Response("Not Found", { status: 404 });
     } catch (e) {
@@ -66,6 +70,46 @@ export default {
     await this.initDB(env);
     await env.suyuan.prepare("INSERT INTO notes (user_id, username, title, content, tags) VALUES (?, ?, ?, ?, ?)")
       .bind(user.id, user.username, title, content, tags || "").run();
+
+    return new Response(JSON.stringify({ success: true }), { status: 201 });
+  },
+
+  async handleChangePassword(request, env) {
+    const user = await this.auth(request, env);
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+
+    const { oldPassword, newPassword } = await request.json();
+    if (!oldPassword || !newPassword) return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
+
+    const currentHash = await this.hashPassword(oldPassword);
+    const dbUser = await env.suyuan.prepare("SELECT password_hash FROM users WHERE id = ?").bind(user.id).first();
+
+    if (dbUser.password_hash !== currentHash) {
+        return new Response(JSON.stringify({ error: "Incorrect old password" }), { status: 400 });
+    }
+
+    const newHash = await this.hashPassword(newPassword);
+    await env.suyuan.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(newHash, user.id).run();
+
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  },
+
+  async handleAddUser(request, env) {
+    const user = await this.auth(request, env);
+    if (!user || user.role !== 'admin') return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
+
+    const { username, password, role } = await request.json();
+    if (!username || !password) return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
+
+    // Check if user exists
+    const existing = await env.suyuan.prepare("SELECT id FROM users WHERE username = ?").bind(username).first();
+    if (existing) return new Response(JSON.stringify({ error: "Username taken" }), { status: 409 });
+
+    const hash = await this.hashPassword(password);
+    const newRole = role === 'admin' ? 'admin' : 'user';
+
+    await env.suyuan.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)")
+      .bind(username, hash, newRole).run();
 
     return new Response(JSON.stringify({ success: true }), { status: 201 });
   },
@@ -189,11 +233,91 @@ export default {
     return new Response(this.htmlTemplate(`
       <h2>Admin Dashboard</h2>
       <nav>
-        <a href="/docs">View Docs</a> | <a href="/">Logout</a>
+        <a href="/docs">View Docs</a> | <a href="/admin/users/add">Add User</a> | <a href="/profile">Profile</a> | <a href="/">Logout</a>
       </nav>
       <h3>User Management</h3>
       <table border="1" style="width:100%">${rows}</table>
     `), { headers: { "Content-Type": "text/html" } });
+  },
+
+  renderProfile(request, env) {
+    // We fetch user info in client via auth token check, but for SSR we assume user is logged in if they reach here (middleware-ish check usually)
+    // For simplicity, we just render the form, auth check happens on submission or we can do a quick check.
+    // Ideally we pass 'user' object to render functions.
+    // Let's do a quick client-side auth check pattern or server check.
+    return new Response(this.htmlTemplate(`
+      <h2>Profile</h2>
+      <nav><a href="/blog">Back to Blog</a></nav>
+      
+      <div class="card">
+        <h3>Change Password</h3>
+        <input type="password" id="oldPass" placeholder="Current Password" class="input-field">
+        <input type="password" id="newPass" placeholder="New Password" class="input-field">
+        <button onclick="changePass()" class="btn-primary">Update Password</button>
+      </div>
+
+      <script>
+        async function changePass() {
+          const oldPassword = document.getElementById('oldPass').value;
+          const newPassword = document.getElementById('newPass').value;
+          
+          if(!oldPassword || !newPassword) return alert('Fill all fields');
+
+          const res = await fetch('/api/password', {
+            method: 'POST',
+            body: JSON.stringify({ oldPassword, newPassword })
+          });
+
+          if(res.ok) {
+            alert('Password updated!');
+            document.getElementById('oldPass').value = '';
+            document.getElementById('newPass').value = '';
+          } else {
+            const data = await res.json();
+            alert(data.error);
+          }
+        }
+      </script>
+    `, 'Profile'), { headers: { "Content-Type": "text/html" } });
+  },
+
+  renderAddUser(request, env) {
+    return new Response(this.htmlTemplate(`
+      <h2>Add New User</h2>
+      <nav><a href="/admin">Back to Admin</a></nav>
+      
+      <div class="card">
+        <input type="text" id="newUsername" placeholder="Username" class="input-field">
+        <input type="password" id="newPassword" placeholder="Password" class="input-field">
+        <div style="margin-bottom: 15px;">
+            <label><input type="checkbox" id="isAdmin"> Is Admin?</label>
+        </div>
+        <button onclick="addUser()" class="btn-primary">Create User</button>
+      </div>
+
+      <script>
+        async function addUser() {
+          const username = document.getElementById('newUsername').value;
+          const password = document.getElementById('newPassword').value;
+          const role = document.getElementById('isAdmin').checked ? 'admin' : 'user';
+          
+          if(!username || !password) return alert('Fill all fields');
+
+          const res = await fetch('/api/users/add', {
+            method: 'POST',
+            body: JSON.stringify({ username, password, role })
+          });
+
+          if(res.ok) {
+            alert('User created!');
+            window.location.href = '/admin';
+          } else {
+            const data = await res.json();
+            alert(data.error);
+          }
+        }
+      </script>
+    `, 'Add User'), { headers: { "Content-Type": "text/html" } });
   },
 
   renderDocs() {
@@ -393,6 +517,7 @@ export default {
         <a href="/">Home</a>
         <a href="/blog">Blog</a>
         <a href="/write">Write</a>
+        <a href="/profile">Profile</a>
         <a href="/docs">Docs</a>
     </nav>
     <main>
