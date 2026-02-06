@@ -14,8 +14,8 @@ export default {
         if (url.pathname === "/profile") return this.renderProfile(request, env);
         if (url.pathname === "/admin/users/add") return this.renderAddUser(request, env);
         if (url.pathname.startsWith("/blog/")) {
-            const id = url.pathname.split('/')[2];
-            if (id) return this.renderBlogView(env, id);
+          const id = url.pathname.split('/')[2];
+          if (id) return this.renderBlogView(env, id);
         }
         if (url.pathname === "/admin") return this.renderAdminUI(request, env);
       }
@@ -83,10 +83,18 @@ export default {
     if (!oldPassword || !newPassword) return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
 
     const currentHash = await this.hashPassword(oldPassword);
-    const dbUser = await env.suyuan.prepare("SELECT password_hash FROM users WHERE id = ?").bind(user.id).first();
 
-    if (dbUser.password_hash !== currentHash) {
-        return new Response(JSON.stringify({ error: "Incorrect old password" }), { status: 400 });
+    // Explicitly fetch the column value to avoid object/property ambiguity
+    const dbHash = await env.suyuan.prepare("SELECT password_hash FROM users WHERE id = ?").bind(user.id).first("password_hash");
+
+    // Check if user exists (dbHash will be null if no row found)
+    if (dbHash === null) {
+      return new Response(JSON.stringify({ error: "User not found" }), { status: 404 });
+    }
+
+    if (dbHash !== currentHash) {
+      // Return detailed error for debugging if needed, but standard logic implies mismatch
+      return new Response(JSON.stringify({ error: "Incorrect old password" }), { status: 400 });
     }
 
     const newHash = await this.hashPassword(newPassword);
@@ -121,17 +129,17 @@ export default {
     const tagFilter = url.searchParams.get('tag');
 
     const { results } = await env.suyuan.prepare("SELECT id, title, username, created_at, tags FROM notes ORDER BY created_at DESC").all();
-    
+
     let filteredResults = results;
     if (tagFilter) {
-      filteredResults = results.filter(n => (n.tags || '').split(',').map(t=>t.trim()).includes(tagFilter));
+      filteredResults = results.filter(n => (n.tags || '').split(',').map(t => t.trim()).includes(tagFilter));
     }
-    
+
     const list = filteredResults.map(n => {
-      const tagsHtml = (n.tags || '').split(',').filter(t=>t).map(t => 
+      const tagsHtml = (n.tags || '').split(',').filter(t => t).map(t =>
         `<a href="/?tag=${t.trim()}" class="tag">#${t.trim()}</a>`
       ).join(' ');
-      
+
       return `
       <article class="card">
         <h3><a href="/blog/${n.id}" class="title-link">${n.title}</a></h3>
@@ -159,7 +167,7 @@ export default {
     const note = await env.suyuan.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first();
     if (!note) return new Response("Note not found", { status: 404 });
 
-    const tagsHtml = (note.tags || '').split(',').filter(t=>t).map(t => `<span class="tag">#${t.trim()}</span>`).join(' ');
+    const tagsHtml = (note.tags || '').split(',').filter(t => t).map(t => `<span class="tag">#${t.trim()}</span>`).join(' ');
 
     return new Response(this.htmlTemplate(`
       <article class="post-view">
@@ -230,7 +238,7 @@ export default {
 
     const { results } = await env.suyuan.prepare("SELECT id, username, role, created_at FROM users").all();
     let rows = results.map(u => `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.role}</td><td>${u.created_at}</td></tr>`).join('');
-    
+
     return new Response(this.htmlTemplate(`
       <h2>Admin Dashboard</h2>
       <nav>
@@ -266,6 +274,7 @@ export default {
 
           const res = await fetch('/api/password', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ oldPassword, newPassword })
           });
 
@@ -367,9 +376,9 @@ export default {
     `).run();
     // Try to add column if not exists (for existing deploys)
     try {
-        await env.suyuan.prepare("ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT ''").run();
+      await env.suyuan.prepare("ALTER TABLE notes ADD COLUMN tags TEXT DEFAULT ''").run();
     } catch (e) {
-        // Column likely exists
+      // Column likely exists
     }
   },
 
