@@ -1,48 +1,48 @@
 # Suyuank Cloudflare Worker
 
-This project is a Cloudflare Worker application that provides a user authentication system with an admin dashboard. It utilizes Cloudflare D1 for data persistence and KV for session management.
+本项目是一个 Cloudflare Worker 应用程序，提供带有管理仪表板的用户认证系统。它利用 Cloudflare D1 进行数据持久化，使用 KV 进行会话管理。
 
-## 🚀 Live Demo
+## 🚀 在线演示
 
-The project is automatically deployed to: **[https://m.suyuank.top/](https://m.suyuank.top/)**
+项目已自动部署至：**[https://m.suyuank.top/](https://m.suyuank.top/)**
 
-## ✨ Features
+## ✨ 功能特性
 
-- **User Authentication**:
-  - User Registration (`/register`)
-  - User Login (`/`)
-- **Role-Based Access Control**:
-  - The first registered user is automatically assigned the `admin` role.
-  - Subsequent users are assigned the `user` role.
-- **Admin Dashboard**:
-  - Accessible at `/admin` (requires admin privileges).
-  - View a list of all registered users.
-- **Technology Stack**:
-  - **Runtime**: Cloudflare Workers
-  - **Database**: Cloudflare D1 (binding: `suyuan`)
-  - **Session Store**: Cloudflare KV (binding: `suyuankv`)
+- **用户认证**：
+  - 用户注册 (`/register`)
+  - 用户登录 (`/`)
+- **基于角色的访问控制**：
+  - 第一个注册的用户自动获得 `admin`（管理员）角色。
+  - 后续用户默认为 `user`（普通用户）角色。
+- **管理仪表板**：
+  - 访问路径 `/admin`（需要管理员权限）。
+  - 查看所有注册用户列表。
+- **技术栈**：
+  - **运行环境**: Cloudflare Workers
+  - **数据库**: Cloudflare D1 (绑定名称: `suyuan`)
+  - **会话存储**: Cloudflare KV (绑定名称: `suyuankv`)
 
-## 🛠️ Development
+## 🛠️ 开发指南
 
-To run this project locally, you need [Wrangler](https://developers.cloudflare.com/workers/wrangler/install-and-update/).
+要在本地运行此项目，你需要安装 [Wrangler](https://developers.cloudflare.com/workers/wrangler/install-and-update/)。
 
-1. **Install Dependencies**:
+1. **安装依赖**：
    ```bash
    npm install
    ```
 
-2. **Start Development Server**:
+2. **启动开发服务器**：
    ```bash
    npm run dev
    ```
 
-3. **Deploy**:
+3. **部署**：
    ```bash
    npm run deploy
    ```
 
-## 📂 Project Structure
+## 📂 项目结构
 
-- `src/index.js`: Main application logic (API endpoints and HTML rendering).
-- `wrangler.toml`: Cloudflare Workers configuration.
-- `.github`: GitHub Actions workflows for automatic deployment.
+- `src/index.js`: 主要应用程序逻辑（API 端点和 HTML 渲染）。
+- `wrangler.toml`: Cloudflare Workers 配置文件。
+- `.github`: 用于自动部署的 GitHub Actions 工作流。
