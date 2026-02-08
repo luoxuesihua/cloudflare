@@ -6,12 +6,24 @@ export default {
     try {
       if (method === "GET") {
         if (url.pathname === "/") return this.renderBlogList(request, env);
-        if (url.pathname === "/login") return this.renderUI('login');
+        if (url.pathname === "/login") {
+          const user = await this.auth(request, env);
+          if (user) return Response.redirect(url.origin + "/profile", 302);
+          return this.renderUI('login');
+        }
         if (url.pathname === "/register") return this.renderUI('register');
         if (url.pathname === "/docs") return this.renderDocs();
         if (url.pathname === "/blog") return this.renderBlogList(request, env);
-        if (url.pathname === "/write") return this.renderBlogEditor(request, env);
-        if (url.pathname === "/profile") return this.renderProfile(request, env);
+        if (url.pathname === "/write") {
+          const user = await this.auth(request, env);
+          if (!user) return Response.redirect(url.origin + "/login?redirect=" + encodeURIComponent(url.pathname), 302);
+          return this.renderBlogEditor(request, env);
+        }
+        if (url.pathname === "/profile") {
+          const user = await this.auth(request, env);
+          if (!user) return Response.redirect(url.origin + "/login?redirect=" + encodeURIComponent(url.pathname), 302);
+          return this.renderProfile(request, env);
+        }
         if (url.pathname === "/admin/users/add") return this.renderAddUser(request, env);
         if (url.pathname.startsWith("/blog/")) {
           const id = url.pathname.split('/')[2];
@@ -400,7 +412,15 @@ export default {
           const res = await fetch('/api/${type}', { method: 'POST', body: JSON.stringify({username: u.value, password: p.value}) });
           const data = await res.json();
           if (res.ok) {
-            if ('${type}' === 'login') { document.cookie = "auth_token=" + data.token + "; path=/"; location.href = data.role === 'admin' ? '/admin' : '/'; }
+            if ('${type}' === 'login') { 
+              document.cookie = "auth_token=" + data.token + "; path=/"; 
+              const redirect = new URLSearchParams(window.location.search).get('redirect');
+              if (redirect) {
+                location.href = redirect;
+              } else {
+                location.href = data.role === 'admin' ? '/admin' : '/'; 
+              }
+            }
             else { alert('Success'); location.href = '/'; }
           } else { alert(data.error); }
         }
