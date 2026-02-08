@@ -412,36 +412,192 @@ export default {
 
   renderUI(type) {
     const isLogin = type === 'login';
+    const title = isLogin ? 'SYSTEM.ACCESS' : 'NEW.USER.REGISTRATION';
+    const subtitle = isLogin ? 'Identify yourself' : 'Join the network';
+
     return new Response(this.htmlTemplate(`
-      <div class="auth-container">
-        <h2>${isLogin ? 'Welcome Back' : 'Create Account'}</h2>
-        <input type="text" id="u" placeholder="Username" class="input-field"><br>
-        <input type="password" id="p" placeholder="Password" class="input-field"><br>
-        <button onclick="doAction()" class="btn-primary">${isLogin ? 'Sign In' : 'Sign Up'}</button>
-        <div class="auth-links">
-          ${isLogin ? '<a href="/register">No account? Register</a>' : '<a href="/login">Have account? Login</a>'}
-          | <a href="/">Back to Home</a>
+      <style>
+        .auth-wrapper {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 80vh;
+        }
+        .auth-card {
+          width: 100%;
+          max-width: 480px;
+          background: rgba(5, 5, 5, 0.8);
+          border: 1px solid var(--accent-primary);
+          padding: 60px 40px;
+          position: relative;
+          clip-path: polygon(0 0, 100% 0, 100% 95%, 95% 100%, 0 100%);
+          box-shadow: 0 0 50px rgba(14, 165, 233, 0.15);
+        }
+        .auth-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; width: 100%; height: 2px;
+          background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+          animation: scan 2s infinite linear;
+        }
+        @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        
+        .huge-title {
+          font-family: var(--font-head);
+          font-size: 3rem;
+          line-height: 1;
+          margin-bottom: 10px;
+          letter-spacing: -2px;
+          background: linear-gradient(180deg, #fff, var(--text-muted));
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          text-transform: uppercase;
+        }
+        .subtitle {
+          color: var(--accent-primary);
+          font-family: var(--font-body);
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          font-size: 0.8rem;
+          margin-bottom: 40px;
+          display: block;
+        }
+        .input-group { position: relative; margin-bottom: 30px; }
+        .input-minimal {
+          width: 100%;
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--text-muted);
+          padding: 15px 0;
+          color: var(--text-main);
+          font-family: var(--font-body);
+          font-size: 1.2rem;
+          transition: 0.3s;
+        }
+        .input-minimal:focus {
+          outline: none;
+          border-bottom-color: var(--accent-primary);
+        }
+        .input-label {
+          position: absolute;
+          top: 15px; left: 0;
+          color: var(--text-muted);
+          pointer-events: none;
+          transition: 0.3s;
+          font-size: 1rem;
+        }
+        .input-minimal:focus + .input-label,
+        .input-minimal:not(:placeholder-shown) + .input-label {
+          top: -10px;
+          font-size: 0.8rem;
+          color: var(--accent-primary);
+        }
+        .btn-massive {
+          width: 100%;
+          background: var(--cta-color);
+          color: #000;
+          border: none;
+          padding: 20px;
+          font-family: var(--font-head);
+          font-size: 1.5rem;
+          text-transform: uppercase;
+          cursor: pointer;
+          clip-path: polygon(0 0, 100% 0, 100% 85%, 95% 100%, 0 100%);
+          transition: 0.2s;
+          font-weight: 700;
+          letter-spacing: 1px;
+        }
+        .btn-massive:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 30px rgba(249, 115, 22, 0.4);
+        }
+        .auth-footer {
+          margin-top: 30px;
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.9rem;
+          color: var(--text-muted);
+        }
+        .auth-footer a { color: var(--text-muted); border-bottom: 1px solid transparent; }
+        .auth-footer a:hover { color: var(--accent-main); border-bottom-color: var(--accent-main); }
+      </style>
+
+      <div class="auth-wrapper">
+        <div class="auth-card">
+          <h1 class="huge-title">${title}</h1>
+          <span class="subtitle">${subtitle}</span>
+          
+          <div class="input-group">
+            <input type="text" id="u" class="input-minimal" placeholder=" " autocomplete="off">
+            <label class="input-label">用户名 / USERNAME</label>
+          </div>
+          
+          <div class="input-group">
+            <input type="password" id="p" class="input-minimal" placeholder=" " autocomplete="off">
+            <label class="input-label">密码 / PASSWORD</label>
+          </div>
+          
+          <button onclick="doAction()" class="btn-massive">${isLogin ? 'INITIATE_SESSION' : 'REGISTER_IDENTITY'}</button>
+          
+          <div class="auth-footer">
+            ${isLogin ? '<a href="/register">注册账户 (REGISTER)</a>' : '<a href="/login">已有账户 (LOGIN)</a>'}
+            <a href="/">返回首页 (HOME)</a>
+          </div>
         </div>
       </div>
+      
       <script>
+        document.querySelectorAll('.input-minimal').forEach(input => {
+          input.addEventListener('keydown', (e) => {
+            if(e.key === 'Enter') doAction();
+          });
+        });
+
         async function doAction() {
-          const res = await fetch('/api/${type}', { method: 'POST', body: JSON.stringify({username: u.value, password: p.value}) });
-          const data = await res.json();
-          if (res.ok) {
-            if ('${type}' === 'login') { 
-              document.cookie = "auth_token=" + data.token + "; path=/"; 
-              const redirect = new URLSearchParams(window.location.search).get('redirect');
-              if (redirect) {
-                location.href = redirect;
-              } else {
-                location.href = data.role === 'admin' ? '/admin' : '/'; 
+          const u = document.getElementById('u').value;
+          const p = document.getElementById('p').value;
+          
+          if (!u || !p) {
+             alert('CREDENTIALS_REQUIRED');
+             return;
+          }
+
+          const btn = document.querySelector('.btn-massive');
+          const originalText = btn.innerText;
+          btn.innerText = 'PROCESSING...';
+          btn.disabled = true;
+
+          try {
+            const res = await fetch('/api/${type}', { method: 'POST', body: JSON.stringify({username: u, password: p}) });
+            const data = await res.json();
+            
+            if (res.ok) {
+              if ('${type}' === 'login') { 
+                document.cookie = "auth_token=" + data.token + "; path=/"; 
+                const redirect = new URLSearchParams(window.location.search).get('redirect');
+                if (redirect) {
+                  location.href = redirect;
+                } else {
+                  location.href = data.role === 'admin' ? '/admin' : '/'; 
+                }
               }
+              else { 
+                alert('IDENTITY_REGISTERED'); 
+                location.href = '/login'; 
+              }
+            } else { 
+              alert('ACCESS_DENIED: ' + data.error); 
+              btn.innerText = originalText;
+              btn.disabled = false;
             }
-            else { alert('Success'); location.href = '/'; }
-          } else { alert(data.error); }
+          } catch (e) {
+            alert('SYSTEM_ERROR');
+            btn.innerText = originalText;
+            btn.disabled = false;
+          }
         }
       </script>
-    `, isLogin ? 'Login' : 'Register'), { headers: { "Content-Type": "text/html" } });
+    `, isLogin ? 'System Access' : 'Registration'), { headers: { "Content-Type": "text/html" } });
   },
 
   htmlTemplate(content, title = 'Suyuan Worker') {
@@ -453,22 +609,22 @@ export default {
     <title>${title} | Suyuank</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Orbitron:wght@400;500;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <style>
       :root {
         --bg-color: #050505;
-        --bg-gradient: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #050505 100%);
+        --bg-gradient: radial-gradient(circle at 50% 0%, #0c4a6e 0%, #050505 100%); /* Adjusted to Sky Blue tint */
         --card-bg: rgba(255, 255, 255, 0.03);
-        --card-border: rgba(0, 243, 255, 0.2);
-        --text-main: #e0e0e0;
+        --card-border: rgba(14, 165, 233, 0.3); /* Primary Blue */
+        --text-main: #f0f9ff;
         --text-muted: #94a3b8;
-        --accent-primary: #00f3ff; /* Cyber Cyan */
-        --accent-secondary: #bc13fe; /* Neon Purple */
+        --accent-primary: #0EA5E9; /* Sky Blue */
+        --accent-secondary: #38BDF8; /* Lighter Blue */
+        --cta-color: #F97316; /* Orange CTA */
         --danger: #ff2a6d;
         --success: #05ffa1;
-        --font-head: 'Orbitron', sans-serif;
-        --font-body: 'Inter', sans-serif;
-        --font-code: 'JetBrains Mono', monospace;
+        --font-head: 'Share Tech Mono', monospace;
+        --font-body: 'Fira Code', monospace;
       }
       
       * { box-sizing: border-box; }
@@ -504,21 +660,19 @@ export default {
         font-family: var(--font-head); 
         color: var(--text-main); 
         text-transform: uppercase; 
-        letter-spacing: 2px;
+        letter-spacing: -1px;
         margin-top: 1.5em; 
         margin-bottom: 0.8em; 
-        text-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
       }
       
       h1 { 
-        font-size: 2rem; 
-        border-bottom: 2px solid var(--accent-primary); 
-        display: inline-block; 
+        font-size: 3.5rem; 
+        line-height: title;
+        border-bottom: none; 
+        display: block; 
         padding-bottom: 10px; 
-        background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        border-image: linear-gradient(90deg, var(--accent-primary), transparent) 1;
+        background: transparent;
+        -webkit-text-fill-color: var(--text-main);
       }
       
       /* Header & Nav */
@@ -533,11 +687,13 @@ export default {
       }
       nav a { 
         position: relative;
-        opacity: 0.7;
+        opacity: 0.6;
+        transition: 0.2s;
       }
       nav a:hover { 
         opacity: 1; 
         color: var(--accent-primary);
+        text-shadow: 0 0 15px var(--accent-primary);
       }
       nav a::after {
         content: '';
@@ -556,10 +712,9 @@ export default {
       .card {
         background: var(--card-bg);
         border: 1px solid var(--card-border);
-        padding: 25px;
+        padding: 30px;
         margin-bottom: 25px;
         backdrop-filter: blur(10px);
-        border-radius: 8px;
         position: relative;
         overflow: hidden;
         transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
@@ -567,17 +722,17 @@ export default {
       .card::before {
         content: '';
         position: absolute;
-        top: 0; left: 0; width: 4px; height: 100%;
+        top: 0; left: 0; width: 2px; height: 100%;
         background: var(--accent-primary);
-        opacity: 0;
+        opacity: 0.5;
         transition: opacity 0.3s;
       }
       .card:hover { 
-        transform: translateY(-5px); 
-        box-shadow: 0 10px 30px -10px rgba(0, 243, 255, 0.2); 
+        transform: translateY(-2px); 
+        box-shadow: 0 20px 40px -10px rgba(14, 165, 233, 0.1); 
         border-color: var(--accent-primary);
       }
-      .card:hover::before { opacity: 1; }
+      .card:hover::before { opacity: 1; box-shadow: 0 0 10px var(--accent-primary); }
 
       .title-link { font-size: 1.5rem; font-weight: 700; display: block; margin-bottom: 12px; }
       .meta { font-size: 0.85rem; color: var(--text-muted); display: flex; gap: 15px; align-items: center; margin-bottom: 15px; font-family: var(--font-code); }
@@ -586,36 +741,36 @@ export default {
       .tags { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
       .tag { 
         font-size: 0.75rem; 
-        font-family: var(--font-code);
-        color: var(--accent-primary); 
-        background: rgba(0, 243, 255, 0.1);
+        font-family: var(--font-body);
+        color: var(--accent-secondary); 
+        background: rgba(56, 189, 248, 0.1);
         padding: 4px 10px;
-        border-radius: 4px;
-        border: 1px solid rgba(0, 243, 255, 0.2);
+        border: 1px solid rgba(56, 189, 248, 0.2);
         text-transform: uppercase;
         letter-spacing: 1px;
       }
       .tag:hover { 
-        background: rgba(0, 243, 255, 0.2);
-        box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+        background: rgba(56, 189, 248, 0.2);
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+        border-color: var(--accent-secondary);
       }
 
       /* Forms */
       .input-field, .textarea-field {
         width: 100%;
         background: rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         color: var(--text-main);
         padding: 15px;
         margin-bottom: 20px;
         font-family: var(--font-body);
-        border-radius: 4px;
+        font-size: 1rem;
         transition: all 0.3s;
       }
       .input-field:focus, .textarea-field:focus { 
         outline: none; 
-        border-color: var(--accent-secondary); 
-        box-shadow: 0 0 15px rgba(188, 19, 254, 0.3); 
+        border-color: var(--accent-primary); 
+        box-shadow: 0 0 20px rgba(14, 165, 233, 0.1); 
         background: rgba(0, 0, 0, 0.5);
       }
       .textarea-field { height: 300px; resize: vertical; }
@@ -629,15 +784,15 @@ export default {
         font-weight: 700;
         text-transform: uppercase;
         cursor: pointer;
-        transition: all 0.3s;
-        letter-spacing: 2px;
+        transition: all 0.2s;
+        letter-spacing: 1px;
         position: relative;
         overflow: hidden;
       }
       .btn-primary:hover { 
         background: var(--accent-primary); 
         color: #000;
-        box-shadow: 0 0 20px var(--accent-primary); 
+        box-shadow: 0 0 30px rgba(14, 165, 233, 0.4); 
       }
 
       /* Auth */
@@ -666,32 +821,31 @@ export default {
       }
 
       /* Markdown Content */
-      .markdown-body { margin-top: 40px; font-size: 1.1rem; }
+      .markdown-body { margin-top: 40px; font-size: 1.1rem; line-height: 1.8; }
       .markdown-body pre { 
-        background: rgba(0,0,0,0.4); 
+        background: rgba(0,0,0,0.6); 
         border: 1px solid rgba(255,255,255,0.1);
         color: var(--text-main); 
-        padding: 20px; 
+        padding: 25px; 
         overflow-x: auto; 
-        border-radius: 6px; 
-        font-family: var(--font-code);
+        font-family: var(--font-body);
       }
       .markdown-body blockquote { 
-        border-left: 4px solid var(--accent-secondary); 
+        border-left: 2px solid var(--accent-primary); 
         padding-left: 20px; 
         color: var(--text-muted); 
         margin: 1.5em 0; 
-        background: linear-gradient(90deg, rgba(188,19,254,0.1), transparent);
+        font-style: italic;
       }
       .markdown-body img { max-width: 100%; border-radius: 4px; border: 1px solid var(--card-border); }
       
       .divider { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 40px 0; }
       
       /* Utilities */
-      .page-header { text-align: center; margin-bottom: 60px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-      table th, table td { border: 1px solid rgba(255,255,255,0.1); padding: 12px; text-align: left; }
-      table th { background: rgba(255,255,255,0.05); color: var(--accent-primary); font-family: var(--font-head); }
+      .page-header { text-align: center; margin-bottom: 80px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+      table th, table td { border: 1px solid rgba(255,255,255,0.1); padding: 15px; text-align: left; }
+      table th { background: rgba(255,255,255,0.02); color: var(--accent-primary); font-family: var(--font-head); letter-spacing: 1px; }
       
     </style>
 </head>
