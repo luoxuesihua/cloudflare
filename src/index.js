@@ -22,7 +22,7 @@ export default {
         if (url.pathname === "/profile") {
           const user = await this.auth(request, env);
           if (!user) return Response.redirect(url.origin + "/login?redirect=" + encodeURIComponent(url.pathname), 302);
-          return this.renderProfile(request, env);
+          return this.renderProfile(request, env, user);
         }
         if (url.pathname === "/admin/users/add") return this.renderAddUser(request, env);
         if (url.pathname.startsWith("/blog/")) {
@@ -161,12 +161,12 @@ export default {
         </div>
         <div class="tags">${tagsHtml}</div>
       </article>
-    `}).join('') || '<p>No notes found.</p>';
+    `}).join('') || '<p>暂无文章。</p>';
 
     return new Response(this.htmlTemplate(`
       <header class="page-header">
-        <h1>Blog</h1>
-        ${tagFilter ? `<p>Tagged with <strong>#${tagFilter}</strong> <a href="/" class="clear-filter">×</a></p>` : ''}
+        <h1>博客</h1>
+        ${tagFilter ? `<p>标签筛选: <strong>#${tagFilter}</strong> <a href="/" class="clear-filter">×</a></p>` : ''}
       </header>
       <div class="blog-list">
         ${list}
@@ -177,7 +177,7 @@ export default {
   async renderBlogView(env, id) {
     await this.initDB(env);
     const note = await env.suyuan.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first();
-    if (!note) return new Response("Note not found", { status: 404 });
+    if (!note) return new Response("文章不存在", { status: 404 });
 
     const tagsHtml = (note.tags || '').split(',').filter(t => t).map(t => `<span class="tag">#${t.trim()}</span>`).join(' ');
 
@@ -194,7 +194,7 @@ export default {
         <hr class="divider">
         <div id="content" class="markdown-body">${note.content}</div> <!-- Raw markdown, handled by script -->
         <hr class="divider">
-        <nav class="post-nav"><a href="/">← Back to Blog</a></nav>
+        <nav class="post-nav"><a href="/">← 返回博客</a></nav>
       </article>
       <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
       <script>
@@ -206,19 +206,19 @@ export default {
   async renderBlogEditor(request, env) {
     const user = await this.auth(request, env);
     if (!user) return new Response(this.htmlTemplate(`
-      <h2>Access Denied</h2>
-      <p>You must <a href="/">login</a> to write notes.</p>
-    `, 'Access Denied'), { status: 403, headers: { "Content-Type": "text/html" } });
+      <h2>访问被拒绝</h2>
+      <p>您必须 <a href="/">登录</a> 才能写文章。</p>
+    `, '访问被拒绝'), { status: 403, headers: { "Content-Type": "text/html" } });
 
     return new Response(this.htmlTemplate(`
-      <h2>Write New Note</h2>
-      <nav><a href="/">Back to Blog</a></nav>
+      <h2>撰写新文章</h2>
+      <nav><a href="/">返回博客</a></nav>
       <div class="editor-form">
-        <input type="text" id="title" placeholder="Title" class="input-field">
-        <input type="text" id="tags" placeholder="Tags (comma separated, e.g. dev, life)" class="input-field">
-        <textarea id="content" placeholder="Write your note in Markdown..." class="textarea-field"></textarea>
+        <input type="text" id="title" placeholder="标题" class="input-field">
+        <input type="text" id="tags" placeholder="标签 (用逗号分隔，例如 dev, life)" class="input-field">
+        <textarea id="content" placeholder="使用 Markdown 编写您的文章..." class="textarea-field"></textarea>
         <div class="actions">
-            <button onclick="publish()" class="btn-primary">Publish</button>
+            <button onclick="publish()" class="btn-primary">发布</button>
         </div>
       </div>
       <script>
@@ -226,7 +226,7 @@ export default {
           const title = document.getElementById('title').value;
           const tags = document.getElementById('tags').value;
           const content = document.getElementById('content').value;
-          if(!title || !content) return alert('Please fill title and content');
+          if(!title || !content) return alert('请填写标题和内容');
           
           const res = await fetch('/api/notes', {
             method: 'POST',
@@ -237,11 +237,11 @@ export default {
             window.location.href = '/blog';
           } else {
             const data = await res.json();
-            alert(data.error || 'Error creating note');
+            alert(data.error || '创建文章失败');
           }
         }
       </script>
-    `, 'New Note'), { headers: { "Content-Type": "text/html" } });
+    `, '新文章'), { headers: { "Content-Type": "text/html" } });
   },
 
   async renderAdminUI(request, env) {
@@ -252,29 +252,45 @@ export default {
     let rows = results.map(u => `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.role}</td><td>${u.created_at}</td></tr>`).join('');
 
     return new Response(this.htmlTemplate(`
-      <h2>Admin Dashboard</h2>
+      <h2>管理后台</h2>
       <nav>
-        <a href="/docs">View Docs</a> | <a href="/admin/users/add">Add User</a> | <a href="/profile">Profile</a> | <a href="/">Logout</a>
+        <a href="/docs">查看文档</a> | <a href="/admin/users/add">添加用户</a> | <a href="/profile">个人中心</a> | <a href="/">退出登录</a>
       </nav>
-      <h3>User Management</h3>
+      <h3>用户管理</h3>
       <table border="1" style="width:100%">${rows}</table>
-    `), { headers: { "Content-Type": "text/html" } });
+    `, '管理后台'), { headers: { "Content-Type": "text/html" } });
   },
 
-  renderProfile(request, env) {
-    // We fetch user info in client via auth token check, but for SSR we assume user is logged in if they reach here (middleware-ish check usually)
-    // For simplicity, we just render the form, auth check happens on submission or we can do a quick check.
-    // Ideally we pass 'user' object to render functions.
-    // Let's do a quick client-side auth check pattern or server check.
+  renderProfile(request, env, user) {
+    const adminLinks = user.role === 'admin' ? `
+      <div class="card" style="border-color: var(--accent-secondary);">
+        <h3>管理员功能</h3>
+        <p>您拥有管理员权限，可以进行以下操作：</p>
+        <div class="actions">
+            <a href="/admin" class="btn-primary" style="display:inline-block; text-align:center; margin-right: 10px;">用户管理仪表盘</a>
+            <a href="/admin/users/add" class="btn-primary" style="display:inline-block; text-align:center;">添加新用户</a>
+        </div>
+      </div>
+    ` : '';
+
     return new Response(this.htmlTemplate(`
-      <h2>Profile</h2>
-      <nav><a href="/">Back to Blog</a></nav>
+      <h2>个人中心</h2>
+      <nav><a href="/">返回首页</a></nav>
       
       <div class="card">
-        <h3>Change Password</h3>
-        <input type="password" id="oldPass" placeholder="Current Password" class="input-field">
-        <input type="password" id="newPass" placeholder="New Password" class="input-field">
-        <button onclick="changePass()" class="btn-primary">Update Password</button>
+        <h3>用户信息</h3>
+        <p><strong>用户名:</strong> ${user.username}</p>
+        <p><strong>用户ID:</strong> ${user.id}</p>
+        <p><strong>角色:</strong> <span class="tag">${user.role}</span></p>
+      </div>
+
+      ${adminLinks}
+
+      <div class="card">
+        <h3>修改密码</h3>
+        <input type="password" id="oldPass" placeholder="当前密码" class="input-field">
+        <input type="password" id="newPass" placeholder="新密码" class="input-field">
+        <button onclick="changePass()" class="btn-primary">更新密码</button>
       </div>
 
       <script>
@@ -282,7 +298,7 @@ export default {
           const oldPassword = document.getElementById('oldPass').value;
           const newPassword = document.getElementById('newPass').value;
           
-          if(!oldPassword || !newPassword) return alert('Fill all fields');
+          if(!oldPassword || !newPassword) return alert('请填写所有字段');
 
           const res = await fetch('/api/password', {
             method: 'POST',
@@ -291,7 +307,7 @@ export default {
           });
 
           if(res.ok) {
-            alert('Password updated!');
+            alert('密码更新成功！');
             document.getElementById('oldPass').value = '';
             document.getElementById('newPass').value = '';
           } else {
@@ -300,21 +316,21 @@ export default {
           }
         }
       </script>
-    `, 'Profile'), { headers: { "Content-Type": "text/html" } });
+    `, '个人中心'), { headers: { "Content-Type": "text/html" } });
   },
 
   renderAddUser(request, env) {
     return new Response(this.htmlTemplate(`
-      <h2>Add New User</h2>
-      <nav><a href="/admin">Back to Admin</a></nav>
+      <h2>添加新用户</h2>
+      <nav><a href="/admin">返回管理后台</a></nav>
       
       <div class="card">
-        <input type="text" id="newUsername" placeholder="Username" class="input-field">
-        <input type="password" id="newPassword" placeholder="Password" class="input-field">
+        <input type="text" id="newUsername" placeholder="用户名" class="input-field">
+        <input type="password" id="newPassword" placeholder="密码" class="input-field">
         <div style="margin-bottom: 15px;">
-            <label><input type="checkbox" id="isAdmin"> Is Admin?</label>
+            <label><input type="checkbox" id="isAdmin"> 是否为管理员?</label>
         </div>
-        <button onclick="addUser()" class="btn-primary">Create User</button>
+        <button onclick="addUser()" class="btn-primary">创建用户</button>
       </div>
 
       <script>
@@ -323,7 +339,7 @@ export default {
           const password = document.getElementById('newPassword').value;
           const role = document.getElementById('isAdmin').checked ? 'admin' : 'user';
           
-          if(!username || !password) return alert('Fill all fields');
+          if(!username || !password) return alert('请填写所有字段');
 
           const res = await fetch('/api/users/add', {
             method: 'POST',
@@ -331,7 +347,7 @@ export default {
           });
 
           if(res.ok) {
-            alert('User created!');
+            alert('用户创建成功！');
             window.location.href = '/admin';
           } else {
             const data = await res.json();
@@ -339,28 +355,28 @@ export default {
           }
         }
       </script>
-    `, 'Add User'), { headers: { "Content-Type": "text/html" } });
+    `, '添加用户'), { headers: { "Content-Type": "text/html" } });
   },
 
   renderDocs() {
     const docs = [
-      { title: "Opencode Antigravity Auth", url: "https://github.com/NoeFabris/opencode-antigravity-auth", desc: "Authentication system documentation" }
+      { title: "Opencode Antigravity Auth", url: "https://github.com/NoeFabris/opencode-antigravity-auth", desc: "认证系统文档" }
     ];
 
     const list = docs.map(d => `
-      <div class="card">
-        <h3><a href="${d.url}" target="_blank">${d.title}</a></h3>
-        <p>${d.desc}</p>
-      </div>
-    `).join('');
+       <div class="card">
+         <h3><a href="${d.url}" target="_blank">${d.title}</a></h3>
+         <p>${d.desc}</p>
+       </div>
+     `).join('');
 
     return new Response(this.htmlTemplate(`
-      <h2>Documentation</h2>
-      <nav><a href="/">Home</a></nav>
-      <div class="docs-list">
-        ${list}
-      </div>
-    `), { headers: { "Content-Type": "text/html" } });
+       <h2>文档</h2>
+       <nav><a href="/">返回首页</a></nav>
+       <div class="docs-list">
+         ${list}
+       </div>
+     `, '文档'), { headers: { "Content-Type": "text/html" } });
   },
 
   async auth(request, env) {
