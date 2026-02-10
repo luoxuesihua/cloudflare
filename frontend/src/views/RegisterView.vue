@@ -1,18 +1,14 @@
 <script setup>
 import { ref } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useAuth } from '../composables/useAuth'
+import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const route = useRoute()
-const { setAuth } = useAuth()
-
 const username = ref('')
 const password = ref('')
 const isLoading = ref(false)
 const errorMsg = ref('')
 
-const handleLogin = async () => {
+const handleRegister = async () => {
   if (!username.value || !password.value) {
     errorMsg.value = '请填写所有字段'
     return
@@ -22,7 +18,7 @@ const handleLogin = async () => {
   errorMsg.value = ''
 
   try {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: username.value, password: password.value })
@@ -30,11 +26,10 @@ const handleLogin = async () => {
     const data = await res.json()
 
     if (res.ok) {
-      setAuth(data.token, { id: data.id, username: data.username, role: data.role })
-      const redirect = route.query.redirect || (data.role === 'admin' ? '/admin' : '/')
-      router.push(redirect)
+      alert('注册成功！请登录。')
+      router.push('/login')
     } else {
-      errorMsg.value = data.error || '登录失败'
+      errorMsg.value = data.error || '注册失败'
     }
   } catch (e) {
     errorMsg.value = '网络错误'
@@ -45,43 +40,43 @@ const handleLogin = async () => {
 </script>
 
 <template>
-  <div class="login-view">
-    <div class="glass-panel login-card">
-      <h2>登录</h2>
-      <p class="subtitle">请输入您的凭证</p>
+  <div class="register-view">
+    <div class="glass-panel register-card">
+      <h2>注册</h2>
+      <p class="subtitle">创建新账户</p>
 
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
-      <form @submit.prevent="handleLogin">
+      <form @submit.prevent="handleRegister">
         <div class="input-group">
           <label>用户名</label>
-          <input type="text" v-model="username" class="input-field" placeholder="输入用户名" />
+          <input type="text" v-model="username" class="input-field" placeholder="选择用户名" />
         </div>
         <div class="input-group">
           <label>密码</label>
-          <input type="password" v-model="password" class="input-field" placeholder="输入密码" @keyup.enter="handleLogin" />
+          <input type="password" v-model="password" class="input-field" placeholder="设置密码" @keyup.enter="handleRegister" />
         </div>
         <button type="submit" class="btn btn-primary full-width" :disabled="isLoading">
-          {{ isLoading ? '登录中...' : '登录' }}
+          {{ isLoading ? '注册中...' : '注册' }}
         </button>
       </form>
 
       <div class="footer-link">
-        还没有账户？<RouterLink to="/register">注册</RouterLink>
+        已有账户？<RouterLink to="/login">登录</RouterLink>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.login-view {
+.register-view {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 60vh;
 }
 
-.login-card {
+.register-card {
   padding: 40px;
   width: 100%;
   max-width: 420px;

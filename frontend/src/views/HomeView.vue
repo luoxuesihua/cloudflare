@@ -1,29 +1,73 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 
-const posts = ref([
-  { id: 1, title: 'Welcome to Rin', date: '2024-02-10', summary: 'This is the start of something new.', tags: ['rin', 'update'] },
-  { id: 2, title: 'Glassmorphism Design', date: '2024-02-09', summary: 'Exploring the beauty of frosted glass UI.', tags: ['ui', 'design'] }
-])
+const posts = ref([])
+const isLoading = ref(true)
+const route = useRoute()
+const currentTag = ref(route.query.tag || '')
+
+async function fetchPosts() {
+  isLoading.value = true
+  try {
+    const url = currentTag.value ? `/api/posts?tag=${encodeURIComponent(currentTag.value)}` : '/api/posts'
+    const res = await fetch(url)
+    posts.value = await res.json()
+  } catch (e) {
+    console.error('获取文章失败', e)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+function filterByTag(tag) {
+  currentTag.value = tag
+  fetchPosts()
+}
+
+function clearFilter() {
+  currentTag.value = ''
+  fetchPosts()
+}
+
+onMounted(fetchPosts)
 </script>
 
 <template>
   <div class="home-view">
     <div class="hero">
       <h1>Rin<span class="highlight">.</span></h1>
-      <p class="subtitle">A modern serverless blog system.</p>
+      <p class="subtitle">基于 Cloudflare 的现代博客系统</p>
     </div>
 
-    <div class="post-grid">
+    <div v-if="currentTag" class="filter-bar glass">
+      <span>标签筛选: <strong>#{{ currentTag }}</strong></span>
+      <a href="#" @click.prevent="clearFilter" class="clear-btn">× 清除</a>
+    </div>
+
+    <div v-if="isLoading" class="loading">加载中...</div>
+
+    <div v-else-if="posts.length === 0" class="empty">
+      <p>暂无文章。</p>
+    </div>
+
+    <div v-else class="post-grid">
       <div v-for="post in posts" :key="post.id" class="card post-card">
         <div class="card-content">
-          <span class="date">{{ post.date }}</span>
+          <span class="date">{{ new Date(post.created_at).toLocaleDateString('zh-CN') }}</span>
           <h2 class="post-title">
             <RouterLink :to="'/post/' + post.id">{{ post.title }}</RouterLink>
           </h2>
-          <p class="summary">{{ post.summary }}</p>
-          <div class="tags">
-            <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
+          <div class="post-meta">
+            <span class="author">@{{ post.username }}</span>
+          </div>
+          <div class="tags" v-if="post.tags">
+            <span
+              v-for="tag in post.tags.split(',').filter(t => t.trim())"
+              :key="tag"
+              class="tag"
+              @click="filterByTag(tag.trim())"
+            >#{{ tag.trim() }}</span>
           </div>
         </div>
       </div>
@@ -34,8 +78,8 @@ const posts = ref([
 <style scoped>
 .hero {
   text-align: center;
-  margin-bottom: 60px;
-  padding: 40px 0;
+  margin-bottom: 50px;
+  padding: 30px 0;
 }
 
 h1 {
@@ -54,34 +98,64 @@ h1 {
 
 .subtitle {
   color: var(--text-muted);
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   margin-top: 10px;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 30px;
+}
+
+.clear-btn {
+  color: var(--danger);
+}
+
+.loading, .empty {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--text-muted);
+  font-size: 1.1rem;
 }
 
 .post-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 30px;
+  gap: 25px;
 }
 
 .post-card {
-  padding: 30px;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  padding: 28px;
+  transition: all 0.3s ease;
+  cursor: default;
+}
+
+.post-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+  box-shadow: 0 10px 40px -10px rgba(14, 165, 233, 0.2);
 }
 
 .date {
   font-family: var(--font-code);
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   display: block;
 }
 
 .post-title a {
   color: #fff;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
+  font-weight: 700;
   line-height: 1.3;
 }
 
@@ -89,15 +163,17 @@ h1 {
   color: var(--primary);
 }
 
-.summary {
+.post-meta {
+  margin-top: 10px;
   color: var(--text-muted);
-  margin: 15px 0 25px;
-  flex-grow: 1;
+  font-size: 0.85rem;
 }
 
 .tags {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 15px;
 }
 
 .tag {
@@ -107,5 +183,12 @@ h1 {
   padding: 4px 10px;
   border-radius: 20px;
   border: 1px solid rgba(14, 165, 233, 0.2);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tag:hover {
+  background: rgba(14, 165, 233, 0.25);
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.3);
 }
 </style>

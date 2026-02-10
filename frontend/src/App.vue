@@ -1,5 +1,15 @@
 <script setup>
 import { RouterView, RouterLink } from 'vue-router'
+import { useAuth } from './composables/useAuth'
+import { useRouter } from 'vue-router'
+
+const { isLoggedIn, isAdmin, user, logout } = useAuth()
+const router = useRouter()
+
+const handleLogout = () => {
+  logout()
+  router.push('/')
+}
 </script>
 
 <template>
@@ -9,10 +19,19 @@ import { RouterView, RouterLink } from 'vue-router'
         <RouterLink to="/" class="logo">
           RIN<span class="dot">.</span>
         </RouterLink>
-        
+
         <nav>
           <RouterLink to="/" class="nav-link">首页</RouterLink>
-          <RouterLink to="/login" class="nav-link">登录</RouterLink>
+          <template v-if="isLoggedIn">
+            <RouterLink to="/write" class="nav-link">写文章</RouterLink>
+            <RouterLink to="/profile" class="nav-link">个人中心</RouterLink>
+            <RouterLink v-if="isAdmin" to="/admin" class="nav-link">管理后台</RouterLink>
+            <a href="#" class="nav-link" @click.prevent="handleLogout">退出</a>
+          </template>
+          <template v-else>
+            <RouterLink to="/login" class="nav-link">登录</RouterLink>
+            <RouterLink to="/register" class="nav-link">注册</RouterLink>
+          </template>
         </nav>
       </div>
     </header>
@@ -27,7 +46,7 @@ import { RouterView, RouterLink } from 'vue-router'
 
     <footer class="main-footer">
       <div class="container">
-        <p>&copy; 2024 Rin Project based on Cloudflare Workers</p>
+        <p>&copy; 2024 Rin · 基于 Cloudflare Workers 构建</p>
       </div>
     </footer>
   </div>
@@ -67,26 +86,28 @@ import { RouterView, RouterLink } from 'vue-router'
   color: var(--primary);
 }
 
+nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .nav-link {
-  margin-left: 20px;
   color: var(--text-muted);
   font-weight: 500;
   position: relative;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s;
 }
 
-.nav-link:hover, .nav-link.router-link-active {
+.nav-link:hover {
   color: #fff;
+  background: rgba(255,255,255,0.05);
 }
 
-.nav-link.router-link-active::after {
-  content: '';
-  position: absolute;
-  bottom: -24px;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background: var(--primary);
-  box-shadow: 0 0 10px var(--primary);
+.nav-link.router-link-exact-active {
+  color: var(--primary);
 }
 
 .main-content {
@@ -101,5 +122,6 @@ import { RouterView, RouterLink } from 'vue-router'
   color: var(--text-muted);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   margin-top: auto;
+  font-size: 0.9rem;
 }
 </style>
