@@ -1,6 +1,7 @@
 {
   "name": "suyuan-worker",
   "version": "1.0.0",
+  "type": "module",
   "main": "src/index.js",
   "scripts": {
     "dev": "wrangler dev",
@@ -8,5 +9,8 @@
   },
   "devDependencies": {
     "wrangler": "^3.0.0"
+  },
+  "dependencies": {
+    "hono": "^4.11.9"
   }
 }

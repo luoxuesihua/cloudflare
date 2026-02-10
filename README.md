@@ -1,48 +1,47 @@
-# Suyuank Cloudflare Worker
+# Rin (Cloudflare Worker + Vue 3 Rewrite)
 
-本项目是一个 Cloudflare Worker 应用程序，提供带有管理仪表板的用户认证系统。它利用 Cloudflare D1 进行数据持久化，使用 KV 进行会话管理。
+This project has been rewritten to match the architecture of **Rin**, using Cloudflare Workers (Hono) for the backend and Vue 3 for the frontend.
 
-## 🚀 在线演示
+## Project Structure
 
-项目已自动部署至：**[https://m.suyuank.top/](https://m.suyuank.top/)**
+- `frontend/`: Vue 3 Single Page Application (UI UX Pro Max Design System).
+- `src/`: Cloudflare Worker API (Hono Framework).
+- `wrangler.toml`: Cloudflare configuration (D1, KV).
 
-## ✨ 功能特性
+## Prerequisites
 
-- **用户认证**：
-  - 用户注册 (`/register`)
-  - 用户登录 (`/`)
-- **基于角色的访问控制**：
-  - 第一个注册的用户自动获得 `admin`（管理员）角色。
-  - 后续用户默认为 `user`（普通用户）角色。
-- **管理仪表板**：
-  - 访问路径 `/admin`（需要管理员权限）。
-  - 查看所有注册用户列表。
-- **技术栈**：
-  - **运行环境**: Cloudflare Workers
-  - **数据库**: Cloudflare D1 (绑定名称: `suyuan`)
-  - **会话存储**: Cloudflare KV (绑定名称: `suyuankv`)
+- Node.js
+- Cloudflare Wrangler (`npm install -g wrangler`)
 
-## 🛠️ 开发指南
+## How to Run
 
-要在本地运行此项目，你需要安装 [Wrangler](https://developers.cloudflare.com/workers/wrangler/install-and-update/)。
+### 1. Backend (Worker)
 
-1. **安装依赖**：
-   ```bash
-   npm install
-   ```
+Start the local development server for the API:
 
-2. **启动开发服务器**：
-   ```bash
-   npm run dev
-   ```
+```bash
+npm install
+wrangler dev
+```
 
-3. **部署**：
-   ```bash
-   npm run deploy
-   ```
+The API will run at `http://localhost:8787`.
 
-## 📂 项目结构
+### 2. Frontend (Vue)
 
-- `src/index.js`: 主要应用程序逻辑（API 端点和 HTML 渲染）。
-- `wrangler.toml`: Cloudflare Workers 配置文件。
-- `.github`: 用于自动部署的 GitHub Actions 工作流。
+In a new terminal, start the frontend development server:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend will run at `http://localhost:5173`.
+It is configured to proxy `/api` requests to the backend.
+
+## Features implemented
+
+- **Glassmorphism UI**: Premium dark mode design.
+- **Hono API**: structured, fast, and standard-compliant.
+- **Data Stores**: Uses D1 for content and KV for sessions/cache.
+- **Auth**: Placeholder for login/registration flow.
