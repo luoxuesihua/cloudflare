@@ -2,6 +2,10 @@ name = "cloudflare"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 
+# 部署前自动编译前端
+[build]
+command = "cd frontend && npm install && npm run build"
+
 # 静态资源配置 - 服务 Vue 前端
 [assets]
 directory = "./frontend/dist"
