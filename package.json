@@ -5,6 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "wrangler dev",
+    "build:frontend": "cd frontend && npm run build",
+    "predeploy": "npm run build:frontend",
     "deploy": "wrangler deploy --minify"
   },
   "devDependencies": {

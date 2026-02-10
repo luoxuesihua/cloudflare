@@ -17,11 +17,13 @@ app.use('*', async (c, next) => {
   await next()
 })
 
-// Routes
+// API 路由
 app.route('/api/auth', auth)
 app.route('/api/posts', posts)
 
-// Health Check
-app.get('/', (c) => c.text('Rin API is running.'))
+// 所有非 API 请求交给前端静态资源处理 (Vue SPA)
+app.all('*', async (c) => {
+  return c.env.ASSETS.fetch(c.req.raw)
+})
 
 export default app

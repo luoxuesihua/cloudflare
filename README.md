@@ -1,47 +1,79 @@
-# Rin (Cloudflare Worker + Vue 3 Rewrite)
+# Rin — 基于 Cloudflare 的现代博客系统
 
-This project has been rewritten to match the architecture of **Rin**, using Cloudflare Workers (Hono) for the backend and Vue 3 for the frontend.
+基于 [Rin](https://github.com/openRin/Rin) 架构重写，使用 **Cloudflare Workers (Hono)** 作为后端 API，**Vue 3** 作为前端 SPA。
 
-## Project Structure
+## 项目结构
 
-- `frontend/`: Vue 3 Single Page Application (UI UX Pro Max Design System).
-- `src/`: Cloudflare Worker API (Hono Framework).
-- `wrangler.toml`: Cloudflare configuration (D1, KV).
-
-## Prerequisites
-
-- Node.js
-- Cloudflare Wrangler (`npm install -g wrangler`)
-
-## How to Run
-
-### 1. Backend (Worker)
-
-Start the local development server for the API:
-
-```bash
-npm install
-wrangler dev
+```
+├── frontend/          # Vue 3 前端 (Vite)
+│   ├── src/
+│   │   ├── views/     # 页面组件 (首页、文章、登录、后台)
+│   │   ├── router/    # 路由配置
+│   │   └── styles/    # 设计系统 (暗黑模式、玻璃拟态)
+│   └── dist/          # 编译产物 (部署时自动生成)
+├── src/               # Cloudflare Worker API (Hono)
+│   ├── index.js       # 入口：API 路由 + 静态资源转发
+│   ├── db.js          # D1 数据库辅助模块
+│   └── routes/
+│       ├── auth.js    # 认证 API (登录/注册)
+│       └── posts.js   # 文章 API (CRUD)
+└── wrangler.toml      # Cloudflare 配置 (D1, KV, 静态资源)
 ```
 
-The API will run at `http://localhost:8787`.
+## 技术栈
 
-### 2. Frontend (Vue)
+| 层级 | 技术 |
+|------|------|
+| 前端 | Vue 3 + Vite + Vue Router |
+| 后端 | Hono (边缘轻量框架) |
+| 数据库 | Cloudflare D1 (SQLite) |
+| 缓存/会话 | Cloudflare KV |
+| 静态资源 | Workers Static Assets |
 
-In a new terminal, start the frontend development server:
+## 快速开始
+
+### 前置条件
+
+- Node.js 18+
+- Wrangler CLI (`npm install -g wrangler`)
+- Cloudflare 账号 (已绑定 D1 和 KV)
+
+### 本地开发
 
 ```bash
-cd frontend
+# 1. 安装依赖
 npm install
+cd frontend && npm install && cd ..
+
+# 2. 启动后端 (端口 8787)
 npm run dev
+
+# 3. 启动前端 (端口 5173，另开终端)
+cd frontend && npm run dev
 ```
 
-The frontend will run at `http://localhost:5173`.
-It is configured to proxy `/api` requests to the backend.
+前端已配置代理，`/api` 请求会自动转发到后端。
 
-## Features implemented
+### 部署到 Cloudflare
 
-- **Glassmorphism UI**: Premium dark mode design.
-- **Hono API**: structured, fast, and standard-compliant.
-- **Data Stores**: Uses D1 for content and KV for sessions/cache.
-- **Auth**: Placeholder for login/registration flow.
+```bash
+# 一键编译前端 + 部署 Worker
+npm run deploy
+```
+
+## 功能特性
+
+- ✅ 用户认证 (注册/登录，Token 存储于 KV)
+- ✅ 文章管理 (创建/列表/详情)
+- ✅ 标签系统
+- ✅ 管理后台
+- ✅ 玻璃拟态暗黑主题
+- ✅ SPA 路由 (前端路由不会 404)
+- 🔲 评论系统
+- 🔲 GitHub OAuth 登录
+- 🔲 图片上传 (R2)
+- 🔲 友情链接
+
+## 许可证
+
+MIT
