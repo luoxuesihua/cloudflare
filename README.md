@@ -46,11 +46,16 @@
 ### 环境配置
 
 ```bash
-# 配置 Resend API Key (推荐使用 secret，避免明文)
-npx wrangler secret put RESEND_API_KEY
+# 1. 创建 R2 存储桶（图片上传）
+npx wrangler r2 bucket create suyuan-images
+
+# 2. 配置 Resend API Key（加密存储，不写入代码）
+npx wrangler versions secret put RESEND_API_KEY
+# 部署新版本
+npx wrangler versions deploy
 ```
 
-同时在 `wrangler.toml` 的 `[vars]` 中设置发信地址：
+发信地址已在 `wrangler.toml` 的 `[vars]` 中配置：
 
 ```toml
 RESEND_FROM = "noreply@yourdomain.com"
