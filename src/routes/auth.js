@@ -14,6 +14,15 @@ async function hashPassword(password) {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+// 密码复杂度校验：至少8位，包含大小写字母和数字
+function validatePassword(password) {
+    if (password.length < 8) return '密码长度至少 8 位'
+    if (!/[a-z]/.test(password)) return '密码需包含小写字母'
+    if (!/[A-Z]/.test(password)) return '密码需包含大写字母'
+    if (!/[0-9]/.test(password)) return '密码需包含数字'
+    return null
+}
+
 async function getUser(c) {
     const token = c.req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return null;
@@ -66,6 +75,10 @@ auth.post('/send-code', async (c) => {
 auth.post('/register', async (c) => {
     const { email, password, phone, username, code } = await c.req.json()
     if (!email || !password || !code) return c.json({ error: '请填写邮箱、密码和验证码' }, 400)
+
+    // 密码复杂度校验
+    const pwdError = validatePassword(password)
+    if (pwdError) return c.json({ error: pwdError }, 400)
 
     // 校验验证码
     const storedCode = await c.env.suyuankv.get(`code:${email}`)
@@ -197,6 +210,10 @@ auth.post('/password', async (c) => {
     const { oldPassword, newPassword } = await c.req.json()
     if (!oldPassword || !newPassword) return c.json({ error: '请填写所有字段' }, 400)
 
+    // 密码复杂度校验
+    const pwdError = validatePassword(newPassword)
+    if (pwdError) return c.json({ error: pwdError }, 400)
+
     const db = getDb(c)
     const fullUser = await db.findUserById(user.id)
     const currentHash = await hashPassword(oldPassword)
@@ -227,6 +244,10 @@ auth.post('/users/add', async (c) => {
     const { username, password, email, phone, role } = await c.req.json()
     if (!username || !password || !email) return c.json({ error: '请填写必要字段 (用户名, 密码, 邮箱)' }, 400)
 
+    // 密码复杂度校验
+    const pwdError = validatePassword(password)
+    if (pwdError) return c.json({ error: pwdError }, 400)
+
     const db = getDb(c)
 
     const existingName = await db.findUserByUsername(username)
@@ -243,6 +264,46 @@ auth.post('/users/add', async (c) => {
     const hash = await hashPassword(password)
     await db.createUser(username, email, phone || '', hash, role === 'admin' ? 'admin' : 'user')
     return c.json({ success: true }, 201)
+})
+
+// 管理员：编辑用户
+auth.put('/users/:id', async (c) => {
+    const user = await getUser(c)
+    if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
+
+    const targetId = parseInt(c.req.param('id'))
+    const { username, email, phone, role } = await c.req.json()
+    if (!username || !email) return c.json({ error: '用户名和邮箱不能为空' }, 400)
+
+    const db = getDb(c)
+
+    const existingName = await db.findUserByUsername(username)
+    if (existingName && existingName.id !== targetId) return c.json({ error: '用户名已被占用' }, 409)
+
+    const existingEmail = await db.findUserByEmail(email)
+    if (existingEmail && existingEmail.id !== targetId) return c.json({ error: '邮箱已被占用' }, 409)
+
+    if (phone) {
+        const existingPhone = await db.findUserByPhone(phone)
+        if (existingPhone && existingPhone.id !== targetId) return c.json({ error: '手机号已被占用' }, 409)
+    }
+
+    await db.updateUserAdmin(targetId, username, email, phone || '', role || 'user')
+    return c.json({ success: true })
+})
+
+// 管理员：删除用户
+auth.delete('/users/:id', async (c) => {
+    const user = await getUser(c)
+    if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
+
+    const targetId = parseInt(c.req.param('id'))
+    // 不允许删除自己
+    if (targetId === user.id) return c.json({ error: '不能删除自己' }, 400)
+
+    const db = getDb(c)
+    await db.deleteUser(targetId)
+    return c.json({ success: true })
 })
 
 export default auth

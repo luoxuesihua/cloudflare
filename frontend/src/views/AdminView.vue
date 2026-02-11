@@ -26,6 +26,12 @@ const newRole = ref('user')
 const addUserMsg = ref('')
 const addUserError = ref(false)
 
+// 编辑用户相关
+const editingUser = ref(null)
+const editUserForm = ref({ username: '', email: '', phone: '', role: 'user' })
+const editUserMsg = ref('')
+const editUserLoading = ref(false)
+
 // 修改密码相关
 const oldPassword = ref('')
 const newPwd = ref('')
@@ -153,6 +159,52 @@ async function addUser() {
   } catch (e) { addUserMsg.value = '网络错误'; addUserError.value = true }
 }
 
+function startEditUser(u) {
+  editingUser.value = u
+  editUserForm.value = { username: u.username, email: u.email || '', phone: u.phone || '', role: u.role }
+  editUserMsg.value = ''
+}
+
+function cancelEditUser() {
+  editingUser.value = null
+  editUserMsg.value = ''
+}
+
+async function saveEditUser() {
+  if (!editUserForm.value.username || !editUserForm.value.email) {
+    editUserMsg.value = '用户名和邮箱不能为空'; return
+  }
+  editUserLoading.value = true
+  editUserMsg.value = ''
+  try {
+    const res = await fetch(`/api/auth/users/${editingUser.value.id}`, {
+      method: 'PUT', headers: getHeaders(),
+      body: JSON.stringify(editUserForm.value)
+    })
+    const data = await res.json()
+    if (res.ok) {
+      editingUser.value = null
+      fetchUsers()
+    } else {
+      editUserMsg.value = data.error || '保存失败'
+    }
+  } catch (e) { editUserMsg.value = '网络错误' }
+  finally { editUserLoading.value = false }
+}
+
+async function deleteUser(u) {
+  if (!confirm(`确定要删除用户 "${u.username}" 吗？此操作不可恢复。`)) return
+  try {
+    const res = await fetch(`/api/auth/users/${u.id}`, { method: 'DELETE', headers: getHeaders() })
+    const data = await res.json()
+    if (res.ok) {
+      users.value = users.value.filter(x => x.id !== u.id)
+    } else {
+      alert(data.error || '删除失败')
+    }
+  } catch (e) { alert('网络错误') }
+}
+
 async function changePassword() {
   if (!oldPassword.value || !newPwd.value) {
     pwdMessage.value = '请填写所有字段'
@@ -270,13 +322,19 @@ onMounted(() => {
         <div v-if="isLoading" class="loading-text">加载中...</div>
 
         <table v-else-if="users.length" class="data-table desktop-only">
-          <thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>手机号</th><th>角色</th><th>注册时间</th></tr></thead>
+          <thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>手机号</th><th>角色</th><th>注册时间</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-for="u in users" :key="u.id">
               <td>{{ u.id }}</td><td>{{ u.username }}</td>
               <td>{{ u.email }}</td><td>{{ u.phone }}</td>
               <td><span class="role-badge">{{ u.role }}</span></td>
               <td>{{ new Date(u.created_at).toLocaleDateString('zh-CN') }}</td>
+              <td>
+                <div style="display: flex; gap: 6px;">
+                  <button class="btn-sm btn-ghost" @click="startEditUser(u)">编辑</button>
+                  <button class="btn-danger-sm" @click="deleteUser(u)">删除</button>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -288,13 +346,50 @@ onMounted(() => {
               <span class="role-badge">{{ u.role }}</span>
             </div>
             <div class="mobile-card-meta">
+              <span>{{ u.email }}</span>
               <span>ID: {{ u.id }}</span>
-              <span>{{ new Date(u.created_at).toLocaleDateString('zh-CN') }}</span>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button class="btn-sm btn-ghost" @click="startEditUser(u)">编辑</button>
+              <button class="btn-danger-sm" @click="deleteUser(u)">删除</button>
             </div>
           </div>
         </div>
 
         <p v-else class="empty-text">暂无用户</p>
+
+        <!-- 编辑用户弹窗 -->
+        <div v-if="editingUser" class="modal-overlay" @click.self="cancelEditUser">
+          <div class="modal-box glass-panel">
+            <h3>编辑用户 #{{ editingUser.id }}</h3>
+            <div v-if="editUserMsg" class="msg error-msg">{{ editUserMsg }}</div>
+            <div class="input-group">
+              <label>用户名</label>
+              <input type="text" v-model="editUserForm.username" class="input-field" />
+            </div>
+            <div class="input-group">
+              <label>邮箱</label>
+              <input type="email" v-model="editUserForm.email" class="input-field" />
+            </div>
+            <div class="input-group">
+              <label>手机号</label>
+              <input type="text" v-model="editUserForm.phone" class="input-field" />
+            </div>
+            <div class="input-group">
+              <label>角色</label>
+              <select v-model="editUserForm.role" class="input-field">
+                <option value="user">普通用户</option>
+                <option value="admin">管理员</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+              <button @click="saveEditUser" class="btn btn-primary" :disabled="editUserLoading">
+                {{ editUserLoading ? '保存中...' : '保存' }}
+              </button>
+              <button @click="cancelEditUser" class="btn btn-ghost">取消</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 添加用户 -->
@@ -317,6 +412,12 @@ onMounted(() => {
           <div class="input-group">
             <label>密码</label>
             <input type="password" v-model="newPassword" class="input-field" placeholder="设置密码" />
+            <div v-if="newPassword" class="pwd-hints">
+              <span :class="{ pass: newPassword.length >= 8 }">• 至少 8 位</span>
+              <span :class="{ pass: /[a-z]/.test(newPassword) }">• 小写字母</span>
+              <span :class="{ pass: /[A-Z]/.test(newPassword) }">• 大写字母</span>
+              <span :class="{ pass: /[0-9]/.test(newPassword) }">• 数字</span>
+            </div>
           </div>
           <div class="input-group">
             <label>角色</label>
@@ -388,6 +489,12 @@ onMounted(() => {
             <div class="input-group">
               <label>新密码</label>
               <input type="password" v-model="newPwd" class="input-field" placeholder="输入新密码" />
+              <div v-if="newPwd" class="pwd-hints">
+                <span :class="{ pass: newPwd.length >= 8 }">• 至少 8 位</span>
+                <span :class="{ pass: /[a-z]/.test(newPwd) }">• 小写字母</span>
+                <span :class="{ pass: /[A-Z]/.test(newPwd) }">• 大写字母</span>
+                <span :class="{ pass: /[0-9]/.test(newPwd) }">• 数字</span>
+              </div>
             </div>
             <button @click="changePassword" class="btn btn-primary" :disabled="pwdLoading">
               {{ pwdLoading ? '更新中...' : '更新密码' }}
@@ -599,5 +706,62 @@ label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size:
   .profile-grid {
     grid-template-columns: 1fr;
   }
+
+  .modal-box {
+    width: 90vw !important;
+    max-width: 90vw !important;
+  }
+}
+
+/* ===== 弹窗 ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  width: 420px;
+  max-width: 90vw;
+  padding: 30px;
+  border-radius: var(--radius-md);
+}
+
+.modal-box h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+/* ===== 密码提示 ===== */
+.pwd-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+}
+
+.pwd-hints span {
+  font-size: 0.78rem;
+  color: #f87171;
+  transition: color 0.2s;
+}
+
+.pwd-hints span.pass {
+  color: #34d399;
+}
+
+/* ===== 小按钮 ===== */
+.btn-sm {
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
 }
 </style>

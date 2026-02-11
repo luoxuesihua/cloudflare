@@ -162,6 +162,12 @@ const handleRegister = async () => {
         <div class="input-group">
           <label>密码</label>
           <input type="password" v-model="password" class="input-field" placeholder="设置密码" required />
+          <div v-if="password" class="pwd-hints">
+            <span :class="{ pass: password.length >= 8 }">• 至少 8 位</span>
+            <span :class="{ pass: /[a-z]/.test(password) }">• 小写字母</span>
+            <span :class="{ pass: /[A-Z]/.test(password) }">• 大写字母</span>
+            <span :class="{ pass: /[0-9]/.test(password) }">• 数字</span>
+          </div>
         </div>
         <button type="submit" class="btn btn-primary full-width" :disabled="isLoading">
           {{ isLoading ? '注册中...' : '注册' }}
@@ -352,5 +358,22 @@ label {
   margin-top: 25px;
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+.pwd-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+}
+
+.pwd-hints span {
+  font-size: 0.78rem;
+  color: #f87171;
+  transition: color 0.2s;
+}
+
+.pwd-hints span.pass {
+  color: #34d399;
 }
 </style>

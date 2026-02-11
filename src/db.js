@@ -125,6 +125,16 @@ export class Database {
         ).bind(username, email, phone, id).run();
     }
 
+    async updateUserAdmin(id, username, email, phone, role) {
+        return await this.db.prepare(
+            "UPDATE users SET username = ?, email = ?, phone = ?, role = ? WHERE id = ?"
+        ).bind(username, email, phone, role, id).run();
+    }
+
+    async deleteUser(id) {
+        return await this.db.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
+    }
+
     async updatePassword(userId, newHash) {
         return await this.db.prepare(
             "UPDATE users SET password_hash = ? WHERE id = ?"
