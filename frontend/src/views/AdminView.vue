@@ -33,6 +33,61 @@ const pwdLoading = ref(false)
 const pwdMessage = ref('')
 const pwdIsError = ref(false)
 
+// 个人信息编辑
+const isEditing = ref(false)
+const editForm = ref({ username: '', email: '', phone: '' })
+const editLoading = ref(false)
+const editMsg = ref('')
+
+function startEdit() {
+  editForm.value = {
+    username: user.value.username,
+    email: user.value.email,
+    phone: user.value.phone || ''
+  }
+  isEditing.value = true
+  editMsg.value = ''
+}
+
+function cancelEdit() {
+  isEditing.value = false
+  editMsg.value = ''
+}
+
+async function saveProfile() {
+  if (!editForm.value.username || !editForm.value.email) {
+    editMsg.value = '用户名和邮箱不能为空'
+    return
+  }
+  editLoading.value = true
+  editMsg.value = ''
+  
+  try {
+    const res = await fetch('/api/auth/me', {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(editForm.value)
+    })
+    const data = await res.json()
+    if (res.ok) {
+      // 更新本地 user 数据
+      if (data.user) {
+        user.value = { ...user.value, ...data.user }
+        // 更新 localStorage (简单处理，useAuth 可能需要暴露 setAuth 但这里直接改 ref 也行，刷新后会重新 fetch /me)
+        localStorage.setItem('auth_user', JSON.stringify(user.value))
+      }
+      isEditing.value = false
+      alert('修改成功！')
+    } else {
+      editMsg.value = data.error || '保存失败'
+    }
+  } catch (e) {
+    editMsg.value = '网络错误'
+  } finally {
+    editLoading.value = false
+  }
+}
+
 // 侧边栏菜单项（根据角色动态生成）
 const menuItems = computed(() => {
   const items = []
@@ -281,12 +336,41 @@ onMounted(() => {
         <!-- 用户信息 -->
         <div class="profile-grid">
           <div class="profile-info-card glass-inner" style="grid-column: span 2;">
-            <h3>用户信息</h3>
-            <div class="info-row"><span class="label">用户名</span><span>{{ user?.username }}</span></div>
-            <div class="info-row"><span class="label">邮箱</span><span>{{ user?.email }}</span></div>
-            <div class="info-row"><span class="label">手机号</span><span>{{ user?.phone || '未设置' }}</span></div>
-            <div class="info-row"><span class="label">用户 ID</span><span>{{ user?.id }}</span></div>
-            <div class="info-row"><span class="label">角色</span><span class="role-badge">{{ user?.role }}</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>用户信息</h3>
+                <button v-if="!isEditing" @click="startEdit" class="btn btn-ghost btn-sm">编辑</button>
+            </div>
+            
+            <div v-if="editMsg" class="msg error-msg">{{ editMsg }}</div>
+
+            <div v-if="!isEditing">
+                <div class="info-row"><span class="label">用户名</span><span>{{ user?.username }}</span></div>
+                <div class="info-row"><span class="label">邮箱</span><span>{{ user?.email }}</span></div>
+                <div class="info-row"><span class="label">手机号</span><span>{{ user?.phone || '未设置' }}</span></div>
+                <div class="info-row"><span class="label">用户 ID</span><span>{{ user?.id }}</span></div>
+                <div class="info-row"><span class="label">角色</span><span class="role-badge">{{ user?.role }}</span></div>
+            </div>
+
+            <div v-else class="edit-form">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" v-model="editForm.username" class="input-field" />
+                </div>
+                <div class="input-group">
+                    <label>邮箱</label>
+                    <input type="email" v-model="editForm.email" class="input-field" />
+                </div>
+                <div class="input-group">
+                    <label>手机号</label>
+                    <input type="text" v-model="editForm.phone" class="input-field" />
+                </div>
+                <div class="actions" style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button @click="saveProfile" class="btn btn-primary" :disabled="editLoading">
+                        {{ editLoading ? '保存中...' : '保存' }}
+                    </button>
+                    <button @click="cancelEdit" class="btn btn-ghost">取消</button>
+                </div>
+            </div>
           </div>
         </div>
       </div>

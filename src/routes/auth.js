@@ -76,6 +76,38 @@ auth.get('/me', async (c) => {
     return c.json(safeUser)
 })
 
+// 更新当前用户信息
+auth.put('/me', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '未登录' }, 401)
+
+    const { username, email, phone } = await c.req.json()
+    if (!username || !email) return c.json({ error: '用户名和邮箱不能为空' }, 400)
+
+    const db = getDb(c)
+
+    // 检查用户名是否被其他用户占用
+    const existingName = await db.findUserByName(username)
+    if (existingName && existingName.id !== user.id) return c.json({ error: '用户名已被占用' }, 409)
+
+    // 检查邮箱是否被其他用户占用
+    if (email !== user.email) {
+        const existingEmail = await db.findUserByName(email)
+        if (existingEmail && existingEmail.id !== user.id) return c.json({ error: '邮箱已被占用' }, 409)
+    }
+
+    await db.updateUser(user.id, username, email, phone || '')
+
+    // 更新 session 中的用户信息
+    const token = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (token) {
+        const userData = { id: user.id, username, email, phone, role: user.role }
+        await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 })
+    }
+
+    return c.json({ success: true, user: { id: user.id, username, email, phone, role: user.role } })
+})
+
 // 修改密码
 auth.post('/password', async (c) => {
     const user = await getUser(c)

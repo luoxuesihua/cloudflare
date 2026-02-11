@@ -41,7 +41,9 @@ export class Database {
 
         // 尝试添加新字段（用于兼容旧表结构）
         try {
-            await this.db.prepare("ALTER TABLE users ADD COLUMN email TEXT UNIQUE").run();
+            // 注意：SQLite ALTER TABLE 添加 UNIQUE 列可能因现有数据（虽为空）或特定驱动限制而失败
+            // 这里只添加列，唯一性由应用层逻辑保证
+            await this.db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run();
         } catch (e) { }
         try {
             await this.db.prepare("ALTER TABLE users ADD COLUMN phone TEXT").run();
@@ -83,8 +85,15 @@ export class Database {
     }
 
     async findAllUsers() {
-        const { results } = await this.db.prepare("SELECT id, username, email, phone, role, created_at FROM users").all();
-        return results;
+        // 显式捕获可能因列不存在导致的错误
+        try {
+            const { results } = await this.db.prepare("SELECT id, username, email, phone, role, created_at FROM users").all();
+            return results;
+        } catch (e) {
+            // 降级：如果 email/phone 不存在，返回基本信息
+            const { results } = await this.db.prepare("SELECT id, username, role, created_at FROM users").all();
+            return results.map(u => ({ ...u, email: null, phone: null }));
+        }
     }
 
     async getUserCount() {
@@ -95,6 +104,12 @@ export class Database {
         return await this.db.prepare(
             "INSERT INTO users (username, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)"
         ).bind(username, email, phone, hash, role).run();
+    }
+
+    async updateUser(id, username, email, phone) {
+        return await this.db.prepare(
+            "UPDATE users SET username = ?, email = ?, phone = ? WHERE id = ?"
+        ).bind(username, email, phone, id).run();
     }
 
     async updatePassword(userId, newHash) {
