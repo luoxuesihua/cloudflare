@@ -7,17 +7,19 @@
 ```
 ├── frontend/          # Vue 3 前端 (Vite)
 │   ├── src/
-│   │   ├── views/     # 页面组件 (首页、文章、登录、后台)
+│   │   ├── views/     # 页面组件 (首页、文章、登录、注册、后台)
+│   │   ├── composables/ # 组合式函数 (useAuth)
 │   │   ├── router/    # 路由配置
 │   │   └── styles/    # 设计系统 (暗黑模式、玻璃拟态)
 │   └── dist/          # 编译产物 (部署时自动生成)
 ├── src/               # Cloudflare Worker API (Hono)
 │   ├── index.js       # 入口：API 路由 + 静态资源转发
 │   ├── db.js          # D1 数据库辅助模块
+│   ├── email.js       # 邮件发送工具 (Resend API)
 │   └── routes/
-│       ├── auth.js    # 认证 API (登录/注册)
+│       ├── auth.js    # 认证 API (登录/注册/验证码/用户管理)
 │       └── posts.js   # 文章 API (CRUD)
-└── wrangler.toml      # Cloudflare 配置 (D1, KV, 静态资源)
+└── wrangler.toml      # Cloudflare 配置 (D1, KV, Resend)
 ```
 
 ## 技术栈
@@ -27,7 +29,8 @@
 | 前端 | Vue 3 + Vite + Vue Router |
 | 后端 | Hono (边缘轻量框架) |
 | 数据库 | Cloudflare D1 (SQLite) |
-| 缓存/会话 | Cloudflare KV |
+| 缓存/会话 | Cloudflare KV (Token + 验证码) |
+| 邮件服务 | Resend API |
 | 静态资源 | Workers Static Assets |
 
 ## 快速开始
@@ -37,6 +40,20 @@
 - Node.js 18+
 - Wrangler CLI (`npm install -g wrangler`)
 - Cloudflare 账号 (已绑定 D1 和 KV)
+- Resend 账号 (用于发送验证码邮件)
+
+### 环境配置
+
+```bash
+# 配置 Resend API Key (推荐使用 secret，避免明文)
+npx wrangler secret put RESEND_API_KEY
+```
+
+同时在 `wrangler.toml` 的 `[vars]` 中设置发信地址：
+
+```toml
+RESEND_FROM = "noreply@yourdomain.com"
+```
 
 ### 本地开发
 
@@ -63,16 +80,53 @@ npm run deploy
 
 ## 功能特性
 
-- ✅ 用户认证 (注册/登录，Token 存储于 KV)
-- ✅ 文章管理 (创建/列表/详情)
+### 用户认证
+- ✅ 邮箱验证码注册（分步：发送验证码 → 输入验证码+密码）
+- ✅ 密码登录（用户名/邮箱 + 密码）
+- ✅ 验证码登录（邮箱 + 验证码，Tab 切换）
+- ✅ 密码复杂度校验（≥8位 + 大小写字母 + 数字）
+- ✅ 验证码防刷（60 秒冷却 + 5 分钟过期 + 一次性使用）
+- ✅ Token 会话管理（KV，24 小时过期）
+
+### 用户管理
+- ✅ 用户名/邮箱/手机号唯一性校验
+- ✅ 个人信息编辑（个人中心）
+- ✅ 管理员添加用户
+- ✅ 管理员编辑用户（用户名、邮箱、手机号、角色）
+- ✅ 管理员删除用户（不可删除自身）
+- ✅ 修改密码
+
+### 内容管理
+- ✅ 文章 CRUD（创建/列表/详情/删除）
 - ✅ 标签系统
 - ✅ 管理后台
+
+### UI/UX
 - ✅ 玻璃拟态暗黑主题
-- ✅ SPA 路由 (前端路由不会 404)
+- ✅ 响应式设计（桌面端表格 + 移动端卡片）
+- ✅ SPA 路由（前端路由不会 404）
+
+### 规划中
 - 🔲 评论系统
 - 🔲 GitHub OAuth 登录
 - 🔲 图片上传 (R2)
 - 🔲 友情链接
+
+## API 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/auth/send-code` | 发送邮箱验证码 |
+| POST | `/api/auth/register` | 注册（需验证码） |
+| POST | `/api/auth/login` | 密码登录 |
+| POST | `/api/auth/login-code` | 验证码登录 |
+| GET | `/api/auth/me` | 获取当前用户信息 |
+| PUT | `/api/auth/me` | 更新个人信息 |
+| POST | `/api/auth/password` | 修改密码 |
+| GET | `/api/auth/users` | 用户列表（管理员） |
+| POST | `/api/auth/users/add` | 添加用户（管理员） |
+| PUT | `/api/auth/users/:id` | 编辑用户（管理员） |
+| DELETE | `/api/auth/users/:id` | 删除用户（管理员） |
 
 ## 许可证
 
