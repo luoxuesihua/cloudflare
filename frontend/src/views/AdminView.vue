@@ -722,12 +722,14 @@ label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size:
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
 }
 
 .modal-box {
   width: 420px;
   max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
   padding: 30px;
   border-radius: var(--radius-md);
 }
