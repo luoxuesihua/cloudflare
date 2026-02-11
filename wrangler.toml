@@ -25,5 +25,9 @@ id = "e9a8ddb59a4f46088c440e1cc43ad856"
 
 [vars]
 ENVIRONMENT = "production"
-RESEND_API_KEY = "re_NCSnqhQB_CGe2Jwqh4BkrdHcny4cwT2co"
 RESEND_FROM = "noreply@suyuank.top"
+
+# R2 对象存储绑定
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "suyuan-images"
