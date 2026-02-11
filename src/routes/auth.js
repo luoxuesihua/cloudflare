@@ -26,15 +26,22 @@ auth.post('/register', async (c) => {
     if (!email || !password) return c.json({ error: '请填写邮箱和密码' }, 400)
 
     const db = getDb(c)
-    // 检查邮箱或用户名是否被占用
-    const existing = await db.findUserByName(email)
-    if (existing) return c.json({ error: '该账号已被注册' }, 409)
 
-    // 用户名默认使用邮箱（去重）或者用户提供的用户名
+    // 检查邮箱唯一性
+    const existingEmail = await db.findUserByEmail(email)
+    if (existingEmail) return c.json({ error: '该邮箱已被注册' }, 409)
+
+    // 用户名默认使用邮箱前缀
     const finalUsername = username || email.split('@')[0]
-    // 再次检查用户名
-    const existingName = await db.findUserByName(finalUsername)
-    if (existingName && existingName.email !== email) return c.json({ error: '用户名已被占用' }, 409)
+    // 检查用户名唯一性
+    const existingName = await db.findUserByUsername(finalUsername)
+    if (existingName) return c.json({ error: '用户名已被占用' }, 409)
+
+    // 检查手机号唯一性
+    if (phone) {
+        const existingPhone = await db.findUserByPhone(phone)
+        if (existingPhone) return c.json({ error: '该手机号已被注册' }, 409)
+    }
 
     const hash = await hashPassword(password)
     const userCount = await db.getUserCount()
@@ -86,14 +93,18 @@ auth.put('/me', async (c) => {
 
     const db = getDb(c)
 
-    // 检查用户名是否被其他用户占用
-    const existingName = await db.findUserByName(username)
+    // 检查用户名唯一性
+    const existingName = await db.findUserByUsername(username)
     if (existingName && existingName.id !== user.id) return c.json({ error: '用户名已被占用' }, 409)
 
-    // 检查邮箱是否被其他用户占用
-    if (email !== user.email) {
-        const existingEmail = await db.findUserByName(email)
-        if (existingEmail && existingEmail.id !== user.id) return c.json({ error: '邮箱已被占用' }, 409)
+    // 检查邮箱唯一性
+    const existingEmail = await db.findUserByEmail(email)
+    if (existingEmail && existingEmail.id !== user.id) return c.json({ error: '邮箱已被占用' }, 409)
+
+    // 检查手机号唯一性
+    if (phone) {
+        const existingPhone = await db.findUserByPhone(phone)
+        if (existingPhone && existingPhone.id !== user.id) return c.json({ error: '手机号已被占用' }, 409)
     }
 
     await db.updateUser(user.id, username, email, phone || '')
@@ -148,8 +159,20 @@ auth.post('/users/add', async (c) => {
     if (!username || !password || !email) return c.json({ error: '请填写必要字段 (用户名, 密码, 邮箱)' }, 400)
 
     const db = getDb(c)
-    const existing = await db.findUserByName(email)
-    if (existing) return c.json({ error: '该账号/邮箱已被占用' }, 409)
+
+    // 检查用户名唯一性
+    const existingName = await db.findUserByUsername(username)
+    if (existingName) return c.json({ error: '用户名已被占用' }, 409)
+
+    // 检查邮箱唯一性
+    const existingEmail = await db.findUserByEmail(email)
+    if (existingEmail) return c.json({ error: '邮箱已被占用' }, 409)
+
+    // 检查手机号唯一性
+    if (phone) {
+        const existingPhone = await db.findUserByPhone(phone)
+        if (existingPhone) return c.json({ error: '手机号已被占用' }, 409)
+    }
 
     const hash = await hashPassword(password)
     await db.createUser(username, email, phone || '', hash, role === 'admin' ? 'admin' : 'user')

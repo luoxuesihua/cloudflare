@@ -76,8 +76,21 @@ export class Database {
 
     // ========== 用户相关 ==========
     async findUserByName(identifier) {
-        // 支持用户名或邮箱查找
+        // 支持用户名或邮箱查找（用于登录）
         return await this.db.prepare("SELECT * FROM users WHERE username = ? OR email = ?").bind(identifier, identifier).first();
+    }
+
+    async findUserByUsername(username) {
+        return await this.db.prepare("SELECT * FROM users WHERE username = ?").bind(username).first();
+    }
+
+    async findUserByEmail(email) {
+        return await this.db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+    }
+
+    async findUserByPhone(phone) {
+        if (!phone) return null;
+        return await this.db.prepare("SELECT * FROM users WHERE phone = ?").bind(phone).first();
     }
 
     async findUserById(id) {
