@@ -39,8 +39,7 @@ const closeMenu = () => {
           <RouterLink to="/" class="nav-link" @click="closeMenu">首页</RouterLink>
           <template v-if="isLoggedIn">
             <RouterLink to="/write" class="nav-link" @click="closeMenu">写文章</RouterLink>
-            <RouterLink to="/profile" class="nav-link" @click="closeMenu">个人中心</RouterLink>
-            <RouterLink v-if="isAdmin" to="/admin" class="nav-link" @click="closeMenu">管理后台</RouterLink>
+            <RouterLink to="/admin" class="nav-link" @click="closeMenu">{{ isAdmin ? '管理后台' : '个人中心' }}</RouterLink>
             <a href="#" class="nav-link" @click.prevent="handleLogout">退出</a>
           </template>
           <template v-else>

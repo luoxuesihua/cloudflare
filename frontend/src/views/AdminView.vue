@@ -1,25 +1,47 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
-const { isAdmin, getHeaders } = useAuth()
+const { user, isLoggedIn, isAdmin, getHeaders } = useAuth()
 
-if (!isAdmin.value) {
-  router.push('/')
+// 未登录用户重定向到登录页
+if (!isLoggedIn.value) {
+  router.push('/login?redirect=/admin')
 }
 
-const activeTab = ref('posts')
+// 默认 Tab：管理员看文章管理，普通用户看个人中心
+const activeTab = ref(isAdmin.value ? 'posts' : 'profile')
 const posts = ref([])
 const users = ref([])
 const isLoading = ref(false)
 
+// 添加用户相关
 const newUsername = ref('')
 const newPassword = ref('')
 const newRole = ref('user')
 const addUserMsg = ref('')
 const addUserError = ref(false)
+
+// 修改密码相关
+const oldPassword = ref('')
+const newPwd = ref('')
+const pwdLoading = ref(false)
+const pwdMessage = ref('')
+const pwdIsError = ref(false)
+
+// 侧边栏菜单项（根据角色动态生成）
+const menuItems = computed(() => {
+  const items = []
+  if (isAdmin.value) {
+    items.push({ key: 'posts', label: '文章管理' })
+    items.push({ key: 'users', label: '用户管理' })
+    items.push({ key: 'adduser', label: '添加用户' })
+  }
+  items.push({ key: 'profile', label: '个人中心' })
+  return items
+})
 
 async function fetchPosts() {
   isLoading.value = true
@@ -66,37 +88,78 @@ async function addUser() {
   } catch (e) { addUserMsg.value = '网络错误'; addUserError.value = true }
 }
 
+async function changePassword() {
+  if (!oldPassword.value || !newPwd.value) {
+    pwdMessage.value = '请填写所有字段'
+    pwdIsError.value = true
+    return
+  }
+  pwdLoading.value = true
+  pwdMessage.value = ''
+  try {
+    const res = await fetch('/api/auth/password', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ oldPassword: oldPassword.value, newPassword: newPwd.value })
+    })
+    const data = await res.json()
+    if (res.ok) {
+      pwdMessage.value = '密码修改成功！'
+      pwdIsError.value = false
+      oldPassword.value = ''
+      newPwd.value = ''
+    } else {
+      pwdMessage.value = data.error || '修改失败'
+      pwdIsError.value = true
+    }
+  } catch (e) {
+    pwdMessage.value = '网络错误'
+    pwdIsError.value = true
+  } finally {
+    pwdLoading.value = false
+  }
+}
+
 function switchTab(tab) {
   activeTab.value = tab
   if (tab === 'posts') fetchPosts()
   if (tab === 'users') fetchUsers()
 }
 
-onMounted(fetchPosts)
+onMounted(() => {
+  if (isAdmin.value) fetchPosts()
+})
 </script>
 
 <template>
   <div class="admin-view">
     <!-- 移动端 Tab 条 -->
     <div class="mobile-tabs">
-      <button :class="{ active: activeTab === 'posts' }" @click="switchTab('posts')">文章</button>
-      <button :class="{ active: activeTab === 'users' }" @click="switchTab('users')">用户</button>
-      <button :class="{ active: activeTab === 'adduser' }" @click="switchTab('adduser')">添加</button>
+      <button
+        v-for="item in menuItems"
+        :key="item.key"
+        :class="{ active: activeTab === item.key }"
+        @click="switchTab(item.key)"
+      >{{ item.label }}</button>
     </div>
 
     <!-- 桌面端侧边栏 -->
     <div class="sidebar glass-panel">
-      <h3>管理后台</h3>
+      <h3>{{ isAdmin ? '管理后台' : '用户面板' }}</h3>
       <nav>
-        <a href="#" :class="{ active: activeTab === 'posts' }" @click.prevent="switchTab('posts')">文章管理</a>
-        <a href="#" :class="{ active: activeTab === 'users' }" @click.prevent="switchTab('users')">用户管理</a>
-        <a href="#" :class="{ active: activeTab === 'adduser' }" @click.prevent="switchTab('adduser')">添加用户</a>
+        <a
+          v-for="item in menuItems"
+          :key="item.key"
+          href="#"
+          :class="{ active: activeTab === item.key }"
+          @click.prevent="switchTab(item.key)"
+        >{{ item.label }}</a>
       </nav>
     </div>
 
     <div class="content glass-panel">
       <!-- 文章管理 -->
-      <div v-if="activeTab === 'posts'">
+      <div v-if="activeTab === 'posts' && isAdmin">
         <div class="header-actions">
           <h2>文章管理</h2>
           <RouterLink to="/write" class="btn btn-primary">新建</RouterLink>
@@ -137,7 +200,7 @@ onMounted(fetchPosts)
       </div>
 
       <!-- 用户管理 -->
-      <div v-if="activeTab === 'users'">
+      <div v-if="activeTab === 'users' && isAdmin">
         <h2>用户列表</h2>
         <div v-if="isLoading" class="loading-text">加载中...</div>
 
@@ -169,7 +232,7 @@ onMounted(fetchPosts)
       </div>
 
       <!-- 添加用户 -->
-      <div v-if="activeTab === 'adduser'">
+      <div v-if="activeTab === 'adduser' && isAdmin">
         <h2>添加新用户</h2>
         <div v-if="addUserMsg" :class="['msg', addUserError ? 'error-msg' : 'success-msg']">{{ addUserMsg }}</div>
         <div class="add-user-form">
@@ -189,6 +252,38 @@ onMounted(fetchPosts)
             </select>
           </div>
           <button @click="addUser" class="btn btn-primary">创建用户</button>
+        </div>
+      </div>
+
+      <!-- 个人中心 -->
+      <div v-if="activeTab === 'profile'" class="profile-section">
+        <h2>个人中心</h2>
+
+        <!-- 用户信息 -->
+        <div class="profile-grid">
+          <div class="profile-info-card glass-inner">
+            <h3>用户信息</h3>
+            <div class="info-row"><span class="label">用户名</span><span>{{ user?.username }}</span></div>
+            <div class="info-row"><span class="label">用户 ID</span><span>{{ user?.id }}</span></div>
+            <div class="info-row"><span class="label">角色</span><span class="role-badge">{{ user?.role }}</span></div>
+          </div>
+
+          <!-- 修改密码 -->
+          <div class="profile-pwd-card glass-inner">
+            <h3>修改密码</h3>
+            <div v-if="pwdMessage" :class="['msg', pwdIsError ? 'error-msg' : 'success-msg']">{{ pwdMessage }}</div>
+            <div class="input-group">
+              <label>当前密码</label>
+              <input type="password" v-model="oldPassword" class="input-field" placeholder="输入当前密码" />
+            </div>
+            <div class="input-group">
+              <label>新密码</label>
+              <input type="password" v-model="newPwd" class="input-field" placeholder="输入新密码" />
+            </div>
+            <button @click="changePassword" class="btn btn-primary" :disabled="pwdLoading">
+              {{ pwdLoading ? '更新中...' : '更新密码' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -315,6 +410,43 @@ label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size:
 .desktop-only { display: table; }
 .mobile-only { display: none; }
 
+/* ===== 个人中心 ===== */
+.profile-section h2 {
+  margin-bottom: 24px;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.glass-inner {
+  padding: 24px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-inner h3 {
+  margin-top: 0;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.95rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.info-row .label {
+  color: var(--text-muted);
+}
+
 /* ===== 移动端 ===== */
 @media (max-width: 768px) {
   .admin-view {
@@ -355,5 +487,9 @@ label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size:
   .desktop-only { display: none !important; }
   .mobile-only { display: block !important; }
   .add-user-form { max-width: 100%; }
+
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
