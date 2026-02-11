@@ -54,8 +54,8 @@ const handleLogin = async () => {
 
       <form @submit.prevent="handleLogin">
         <div class="input-group">
-          <label>用户名</label>
-          <input type="text" v-model="username" class="input-field" placeholder="输入用户名" />
+          <label>用户名 / 邮箱</label>
+          <input type="text" v-model="username" class="input-field" placeholder="输入用户名或邮箱" />
         </div>
         <div class="input-group">
           <label>密码</label>

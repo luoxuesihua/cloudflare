@@ -3,14 +3,16 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const email = ref('')
 const username = ref('')
+const phone = ref('')
 const password = ref('')
 const isLoading = ref(false)
 const errorMsg = ref('')
 
 const handleRegister = async () => {
-  if (!username.value || !password.value) {
-    errorMsg.value = '请填写所有字段'
+  if (!email.value || !password.value) {
+    errorMsg.value = '请填写邮箱和密码'
     return
   }
 
@@ -21,7 +23,12 @@ const handleRegister = async () => {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: username.value, password: password.value })
+      body: JSON.stringify({
+        email: email.value,
+        username: username.value,
+        phone: phone.value,
+        password: password.value
+      })
     })
     const data = await res.json()
 
@@ -49,12 +56,20 @@ const handleRegister = async () => {
 
       <form @submit.prevent="handleRegister">
         <div class="input-group">
-          <label>用户名</label>
-          <input type="text" v-model="username" class="input-field" placeholder="选择用户名" />
+          <label>邮箱</label>
+          <input type="email" v-model="email" class="input-field" placeholder="请输入邮箱" required />
+        </div>
+        <div class="input-group">
+          <label>用户名 (可选)</label>
+          <input type="text" v-model="username" class="input-field" placeholder="默认使用邮箱前缀" />
+        </div>
+        <div class="input-group">
+          <label>手机号 (可选)</label>
+          <input type="text" v-model="phone" class="input-field" placeholder="请输入手机号" />
         </div>
         <div class="input-group">
           <label>密码</label>
-          <input type="password" v-model="password" class="input-field" placeholder="设置密码" @keyup.enter="handleRegister" />
+          <input type="password" v-model="password" class="input-field" placeholder="设置密码" @keyup.enter="handleRegister" required />
         </div>
         <button type="submit" class="btn btn-primary full-width" :disabled="isLoading">
           {{ isLoading ? '注册中...' : '注册' }}

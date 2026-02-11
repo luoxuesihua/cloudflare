@@ -20,6 +20,8 @@ const isLoading = ref(false)
 // 添加用户相关
 const newUsername = ref('')
 const newPassword = ref('')
+const newEmail = ref('')
+const newPhone = ref('')
 const newRole = ref('user')
 const addUserMsg = ref('')
 const addUserError = ref(false)
@@ -40,6 +42,7 @@ const menuItems = computed(() => {
     items.push({ key: 'adduser', label: '添加用户' })
   }
   items.push({ key: 'profile', label: '个人中心' })
+  items.push({ key: 'changepwd', label: '修改密码' })
   return items
 })
 
@@ -70,18 +73,25 @@ async function deletePost(id) {
 }
 
 async function addUser() {
-  if (!newUsername.value || !newPassword.value) {
-    addUserMsg.value = '请填写所有字段'; addUserError.value = true; return
+  if (!newUsername.value || !newPassword.value || !newEmail.value) {
+    addUserMsg.value = '请填写必要字段 (用户名, 密码, 邮箱)'; addUserError.value = true; return
   }
   try {
     const res = await fetch('/api/auth/users/add', {
       method: 'POST', headers: getHeaders(),
-      body: JSON.stringify({ username: newUsername.value, password: newPassword.value, role: newRole.value })
+      body: JSON.stringify({
+        username: newUsername.value,
+        password: newPassword.value,
+        email: newEmail.value,
+        phone: newPhone.value,
+        role: newRole.value
+      })
     })
     const data = await res.json()
     if (res.ok) {
       addUserMsg.value = '用户创建成功！'; addUserError.value = false
-      newUsername.value = ''; newPassword.value = ''; fetchUsers()
+      newUsername.value = ''; newPassword.value = ''; newEmail.value = ''; newPhone.value = '';
+      fetchUsers()
     } else {
       addUserMsg.value = data.error || '创建失败'; addUserError.value = true
     }
@@ -205,10 +215,11 @@ onMounted(() => {
         <div v-if="isLoading" class="loading-text">加载中...</div>
 
         <table v-else-if="users.length" class="data-table desktop-only">
-          <thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>注册时间</th></tr></thead>
+          <thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>手机号</th><th>角色</th><th>注册时间</th></tr></thead>
           <tbody>
             <tr v-for="u in users" :key="u.id">
               <td>{{ u.id }}</td><td>{{ u.username }}</td>
+              <td>{{ u.email }}</td><td>{{ u.phone }}</td>
               <td><span class="role-badge">{{ u.role }}</span></td>
               <td>{{ new Date(u.created_at).toLocaleDateString('zh-CN') }}</td>
             </tr>
@@ -241,6 +252,14 @@ onMounted(() => {
             <input type="text" v-model="newUsername" class="input-field" placeholder="新用户名" />
           </div>
           <div class="input-group">
+            <label>邮箱</label>
+            <input type="email" v-model="newEmail" class="input-field" placeholder="用户邮箱" />
+          </div>
+          <div class="input-group">
+            <label>手机号</label>
+            <input type="text" v-model="newPhone" class="input-field" placeholder="手机号 (可选)" />
+          </div>
+          <div class="input-group">
             <label>密码</label>
             <input type="password" v-model="newPassword" class="input-field" placeholder="设置密码" />
           </div>
@@ -261,15 +280,21 @@ onMounted(() => {
 
         <!-- 用户信息 -->
         <div class="profile-grid">
-          <div class="profile-info-card glass-inner">
+          <div class="profile-info-card glass-inner" style="grid-column: span 2;">
             <h3>用户信息</h3>
             <div class="info-row"><span class="label">用户名</span><span>{{ user?.username }}</span></div>
+            <div class="info-row"><span class="label">邮箱</span><span>{{ user?.email }}</span></div>
+            <div class="info-row"><span class="label">手机号</span><span>{{ user?.phone || '未设置' }}</span></div>
             <div class="info-row"><span class="label">用户 ID</span><span>{{ user?.id }}</span></div>
             <div class="info-row"><span class="label">角色</span><span class="role-badge">{{ user?.role }}</span></div>
           </div>
+        </div>
+      </div>
 
-          <!-- 修改密码 -->
-          <div class="profile-pwd-card glass-inner">
+      <!-- 修改密码 -->
+      <div v-if="activeTab === 'changepwd'" class="profile-section">
+        <h2>修改密码</h2>
+        <div class="profile-pwd-card glass-inner" style="max-width: 500px;">
             <h3>修改密码</h3>
             <div v-if="pwdMessage" :class="['msg', pwdIsError ? 'error-msg' : 'success-msg']">{{ pwdMessage }}</div>
             <div class="input-group">
@@ -283,7 +308,6 @@ onMounted(() => {
             <button @click="changePassword" class="btn btn-primary" :disabled="pwdLoading">
               {{ pwdLoading ? '更新中...' : '更新密码' }}
             </button>
-          </div>
         </div>
       </div>
     </div>

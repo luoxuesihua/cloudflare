@@ -21,6 +21,8 @@ export class Database {
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE,
+        phone TEXT,
         password_hash TEXT NOT NULL,
         role TEXT DEFAULT 'user',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -36,6 +38,14 @@ export class Database {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+        // 尝试添加新字段（用于兼容旧表结构）
+        try {
+            await this.db.prepare("ALTER TABLE users ADD COLUMN email TEXT UNIQUE").run();
+        } catch (e) { }
+        try {
+            await this.db.prepare("ALTER TABLE users ADD COLUMN phone TEXT").run();
+        } catch (e) { }
     }
 
     // ========== 文章相关 ==========
@@ -63,8 +73,9 @@ export class Database {
     }
 
     // ========== 用户相关 ==========
-    async findUserByName(username) {
-        return await this.db.prepare("SELECT * FROM users WHERE username = ?").bind(username).first();
+    async findUserByName(identifier) {
+        // 支持用户名或邮箱查找
+        return await this.db.prepare("SELECT * FROM users WHERE username = ? OR email = ?").bind(identifier, identifier).first();
     }
 
     async findUserById(id) {
@@ -72,7 +83,7 @@ export class Database {
     }
 
     async findAllUsers() {
-        const { results } = await this.db.prepare("SELECT id, username, role, created_at FROM users").all();
+        const { results } = await this.db.prepare("SELECT id, username, email, phone, role, created_at FROM users").all();
         return results;
     }
 
@@ -80,10 +91,10 @@ export class Database {
         return await this.db.prepare("SELECT count(*) as count FROM users").first("count");
     }
 
-    async createUser(username, hash, role = 'user') {
+    async createUser(username, email, phone, hash, role = 'user') {
         return await this.db.prepare(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)"
-        ).bind(username, hash, role).run();
+            "INSERT INTO users (username, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)"
+        ).bind(username, email, phone, hash, role).run();
     }
 
     async updatePassword(userId, newHash) {
