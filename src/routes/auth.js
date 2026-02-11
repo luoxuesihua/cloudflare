@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
+import { generateCode, sendVerificationCode } from '../email.js'
 
 const auth = new Hono()
 
@@ -20,10 +21,57 @@ async function getUser(c) {
     return userStr ? JSON.parse(userStr) : null;
 }
 
-// 注册
+// ========== 验证码相关 ==========
+
+// 发送验证码（通用：注册/登录共用）
+auth.post('/send-code', async (c) => {
+    const { email, type } = await c.req.json()
+    if (!email) return c.json({ error: '请填写邮箱' }, 400)
+
+    // type: 'register' | 'login'
+    const db = getDb(c)
+    const existingUser = await db.findUserByEmail(email)
+
+    if (type === 'register' && existingUser) {
+        return c.json({ error: '该邮箱已被注册' }, 409)
+    }
+    if (type === 'login' && !existingUser) {
+        return c.json({ error: '该邮箱未注册' }, 404)
+    }
+
+    // 防止频繁发送：检查是否 60 秒内已发送
+    const rateLimitKey = `code_rate:${email}`
+    const lastSent = await c.env.suyuankv.get(rateLimitKey)
+    if (lastSent) {
+        return c.json({ error: '请求过于频繁，请稍后再试' }, 429)
+    }
+
+    const code = generateCode()
+
+    try {
+        await sendVerificationCode(c.env, email, code)
+    } catch (e) {
+        return c.json({ error: '验证码发送失败，请稍后重试' }, 500)
+    }
+
+    // 存储验证码到 KV，5 分钟过期
+    await c.env.suyuankv.put(`code:${email}`, code, { expirationTtl: 300 })
+    // 频率限制标记，60 秒过期
+    await c.env.suyuankv.put(rateLimitKey, '1', { expirationTtl: 60 })
+
+    return c.json({ success: true, message: '验证码已发送' })
+})
+
+// ========== 注册（需验证码）==========
 auth.post('/register', async (c) => {
-    const { email, password, phone, username } = await c.req.json()
-    if (!email || !password) return c.json({ error: '请填写邮箱和密码' }, 400)
+    const { email, password, phone, username, code } = await c.req.json()
+    if (!email || !password || !code) return c.json({ error: '请填写邮箱、密码和验证码' }, 400)
+
+    // 校验验证码
+    const storedCode = await c.env.suyuankv.get(`code:${email}`)
+    if (!storedCode || storedCode !== code) {
+        return c.json({ error: '验证码错误或已过期' }, 400)
+    }
 
     const db = getDb(c)
 
@@ -47,16 +95,20 @@ auth.post('/register', async (c) => {
     const userCount = await db.getUserCount()
     const role = userCount === 0 ? 'admin' : 'user'
     await db.createUser(finalUsername, email, phone || '', hash, role)
+
+    // 验证码用完即删
+    await c.env.suyuankv.delete(`code:${email}`)
+
     return c.json({ success: true }, 201)
 })
 
-// 登录 (支持用户名或邮箱)
+// ========== 密码登录 ==========
 auth.post('/login', async (c) => {
     const { username, password } = await c.req.json()
     const db = getDb(c)
 
     const hash = await hashPassword(password)
-    const user = await db.findUserByName(username) // findUserByName 已更新支持 email 查找
+    const user = await db.findUserByName(username)
 
     if (!user || user.password_hash !== hash) {
         return c.json({ error: '账号或密码错误' }, 401)
@@ -69,21 +121,43 @@ auth.post('/login', async (c) => {
     return c.json({ token, ...userData })
 })
 
-// 获取当前用户信息
+// ========== 验证码登录 ==========
+auth.post('/login-code', async (c) => {
+    const { email, code } = await c.req.json()
+    if (!email || !code) return c.json({ error: '请填写邮箱和验证码' }, 400)
+
+    // 校验验证码
+    const storedCode = await c.env.suyuankv.get(`code:${email}`)
+    if (!storedCode || storedCode !== code) {
+        return c.json({ error: '验证码错误或已过期' }, 400)
+    }
+
+    const db = getDb(c)
+    const user = await db.findUserByEmail(email)
+    if (!user) return c.json({ error: '用户不存在' }, 404)
+
+    const token = crypto.randomUUID()
+    const userData = { id: user.id, username: user.username, email: user.email, phone: user.phone, role: user.role }
+    await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 })
+
+    // 验证码用完即删
+    await c.env.suyuankv.delete(`code:${email}`)
+
+    return c.json({ token, ...userData })
+})
+
+// ========== 用户信息 ==========
 auth.get('/me', async (c) => {
     const user = await getUser(c)
     if (!user) return c.json({ error: '未登录' }, 401)
-    // 刷新一下最新的数据 (从 DB)
     const db = getDb(c)
     const freshUser = await db.findUserById(user.id)
     if (!freshUser) return c.json({ error: '用户不存在' }, 401)
 
-    // 不返回 hash
     const { password_hash, ...safeUser } = freshUser
     return c.json(safeUser)
 })
 
-// 更新当前用户信息
 auth.put('/me', async (c) => {
     const user = await getUser(c)
     if (!user) return c.json({ error: '未登录' }, 401)
@@ -93,15 +167,12 @@ auth.put('/me', async (c) => {
 
     const db = getDb(c)
 
-    // 检查用户名唯一性
     const existingName = await db.findUserByUsername(username)
     if (existingName && existingName.id !== user.id) return c.json({ error: '用户名已被占用' }, 409)
 
-    // 检查邮箱唯一性
     const existingEmail = await db.findUserByEmail(email)
     if (existingEmail && existingEmail.id !== user.id) return c.json({ error: '邮箱已被占用' }, 409)
 
-    // 检查手机号唯一性
     if (phone) {
         const existingPhone = await db.findUserByPhone(phone)
         if (existingPhone && existingPhone.id !== user.id) return c.json({ error: '手机号已被占用' }, 409)
@@ -109,7 +180,6 @@ auth.put('/me', async (c) => {
 
     await db.updateUser(user.id, username, email, phone || '')
 
-    // 更新 session 中的用户信息
     const token = c.req.header('Authorization')?.replace('Bearer ', '')
     if (token) {
         const userData = { id: user.id, username, email, phone, role: user.role }
@@ -119,7 +189,7 @@ auth.put('/me', async (c) => {
     return c.json({ success: true, user: { id: user.id, username, email, phone, role: user.role } })
 })
 
-// 修改密码
+// ========== 修改密码 ==========
 auth.post('/password', async (c) => {
     const user = await getUser(c)
     if (!user) return c.json({ error: '未登录' }, 401)
@@ -140,7 +210,7 @@ auth.post('/password', async (c) => {
     return c.json({ success: true })
 })
 
-// 管理员：获取用户列表
+// ========== 管理员接口 ==========
 auth.get('/users', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
@@ -150,7 +220,6 @@ auth.get('/users', async (c) => {
     return c.json(users)
 })
 
-// 管理员：添加用户
 auth.post('/users/add', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
@@ -160,15 +229,12 @@ auth.post('/users/add', async (c) => {
 
     const db = getDb(c)
 
-    // 检查用户名唯一性
     const existingName = await db.findUserByUsername(username)
     if (existingName) return c.json({ error: '用户名已被占用' }, 409)
 
-    // 检查邮箱唯一性
     const existingEmail = await db.findUserByEmail(email)
     if (existingEmail) return c.json({ error: '邮箱已被占用' }, 409)
 
-    // 检查手机号唯一性
     if (phone) {
         const existingPhone = await db.findUserByPhone(phone)
         if (existingPhone) return c.json({ error: '手机号已被占用' }, 409)
