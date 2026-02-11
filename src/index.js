@@ -3,7 +3,6 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import auth from './routes/auth'
 import posts from './routes/posts'
-import upload from './routes/upload'
 import { Database } from './db'
 
 const app = new Hono()
@@ -21,7 +20,6 @@ app.use('*', async (c, next) => {
 // API 路由
 app.route('/api/auth', auth)
 app.route('/api/posts', posts)
-app.route('/api/upload', upload)
 
 // 所有非 API 请求交给前端静态资源处理 (Vue SPA)
 app.all('*', async (c) => {

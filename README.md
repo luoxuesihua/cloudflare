@@ -31,7 +31,6 @@
 | 数据库 | Cloudflare D1 (SQLite) |
 | 缓存/会话 | Cloudflare KV (Token + 验证码) |
 | 邮件服务 | Resend API |
-| 对象存储 | Cloudflare R2 (图片) |
 | 静态资源 | Workers Static Assets |
 
 ## 快速开始
@@ -46,10 +45,7 @@
 ### 环境配置
 
 ```bash
-# 1. 创建 R2 存储桶（图片上传）
-npx wrangler r2 bucket create suyuan-images
-
-# 2. 配置 Resend API Key（加密存储，不写入代码）
+# 配置 Resend API Key（加密存储，不写入代码）
 npx wrangler versions secret put RESEND_API_KEY
 # 部署新版本
 npx wrangler versions deploy
@@ -106,7 +102,6 @@ npm run deploy
 - ✅ 文章 CRUD（创建/列表/详情/删除）
 - ✅ 标签系统
 - ✅ 管理后台
-- ✅ 图片上传 (R2)：支持点击上传、拖拽上传、粘贴上传
 
 ### UI/UX
 - ✅ 玻璃拟态暗黑主题
@@ -116,6 +111,7 @@ npm run deploy
 ### 规划中
 - 🔲 评论系统
 - 🔲 GitHub OAuth 登录
+- 🔲 图片上传 (R2)
 - 🔲 友情链接
 
 ## API 接口
@@ -133,10 +129,6 @@ npm run deploy
 | POST | `/api/auth/users/add` | 添加用户（管理员） |
 | PUT | `/api/auth/users/:id` | 编辑用户（管理员） |
 | DELETE | `/api/auth/users/:id` | 删除用户（管理员） |
-| POST | `/api/upload` | 上传图片（需登录） |
-| GET | `/api/upload/:year/:month/:name` | 访问图片（公开） |
-| GET | `/api/upload` | 图片列表（需登录） |
-| DELETE | `/api/upload/:year/:month/:name` | 删除图片（管理员） |
 
 ## 许可证
 
