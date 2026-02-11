@@ -723,6 +723,7 @@ label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size:
   align-items: center;
   justify-content: center;
   z-index: 2000;
+  padding: 20px;
 }
 
 .modal-box {
