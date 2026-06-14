@@ -248,9 +248,9 @@ export async function collectNews(env) {
 
         // 拼接 Markdown 正文
         let formattedContent = markdownDesc;
-        // 如果内容太长，适当截取前 2000 字，防止撑爆 D1 单元
-        if (formattedContent.length > 2000) {
-          formattedContent = formattedContent.substring(0, 2000) + '... (正文过长已截取)';
+        // 如果内容太长，适当截取，防止超出 Cloudflare D1 SQL 大小限制 (1MB)
+        if (formattedContent.length > 100000) {
+          formattedContent = formattedContent.substring(0, 100000) + '... (正文过长已截取)';
         }
         
         formattedContent += `\n\n---\n*本文由 AI 收集器自动抓取。来源: [阅读原文](${link})*`;
