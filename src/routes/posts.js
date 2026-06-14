@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
+import { collectNews } from '../services/collector.js'
+
 
 const posts = new Hono()
 
@@ -55,4 +57,14 @@ posts.delete('/:id', async (c) => {
     return c.json({ success: true })
 })
 
+// 手动采集新闻（仅限管理员）
+posts.post('/collect', async (c) => {
+    const user = await getUser(c)
+    if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
+
+    const result = await collectNews(c.env)
+    return c.json(result)
+})
+
 export default posts
+

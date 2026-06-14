@@ -4,6 +4,8 @@ import { cors } from 'hono/cors'
 import auth from './routes/auth'
 import posts from './routes/posts'
 import { Database } from './db'
+import { collectNews } from './services/collector.js'
+
 
 const app = new Hono()
 
@@ -26,4 +28,10 @@ app.all('*', async (c) => {
   return c.env.ASSETS.fetch(c.req.raw)
 })
 
-export default app
+export default {
+  fetch: app.fetch,
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(collectNews(env))
+  }
+}
+
