@@ -62,6 +62,32 @@ const FEEDS = [
       'https://rsshub.icu/juejin/trending/all/weekly',
       'https://rsshub.app/juejin/trending/all/weekly'
     ]
+  },
+
+  // ===== 数据库 / DBA 专题源 =====
+  {
+    url: 'https://planetscale.com/blog/rss.xml',
+    name: 'PlanetScale',
+    defaultTags: ['数据库'],
+    lang: 'en',
+    bypassFilter: true
+  },
+  {
+    url: 'https://www.postgresql.org/news.rss',
+    name: 'PostgreSQL 官方',
+    defaultTags: ['数据库'],
+    lang: 'en',
+    bypassFilter: true
+  },
+  {
+    url: 'https://rsshub.icu/juejin/category/backend',
+    name: '掘金后端',
+    defaultTags: ['科技'],
+    lang: 'zh',
+    urlBackup: [
+      'https://rsshub.mxdawn.cc/juejin/category/backend',
+      'https://rsshub.app/juejin/category/backend'
+    ]
   }
 ];
 
@@ -81,10 +107,22 @@ const AI_KEYWORDS = [
 const OPS_KEYWORDS = [
   'devops', 'sre', 'sysadmin', 'kubernetes', 'k8s', 'docker', 'cloud native', 
   'cloud-native', 'ci/cd', 'deployment', 'monitoring', 'grafana', 'prometheus', 
-  'ansible', 'terraform', 'server', 'backend', 'linux', 'cluster', 'database',
-  'mysql', 'postgresql', 'nginx', 'apache', 'linux', 'ubuntu', 'centos',
+  'ansible', 'terraform', 'server', 'backend', 'linux', 'cluster',
+  'nginx', 'apache', 'ubuntu', 'centos',
   '运维', '容器', '监控', '集群', '部署', '云原生', '微服务', '持续集成', '服务器',
-  '数据库', '架构师', '可观测性', '高可用', '负载均衡', '容器化'
+  '架构师', '可观测性', '高可用', '负载均衡', '容器化'
+];
+
+// 数据库 / DBA 相关的关键字
+const DB_KEYWORDS = [
+  'database', 'mysql', 'postgresql', 'postgres', 'oracle', 'sql server', 'mssql',
+  'mongodb', 'redis', 'sqlite', 'mariadb', 'tidb', 'oceanbase', 'polardb',
+  'opengauss', 'dameng', 'clickhouse', 'doris', 'starrocks', 'hbase', 'cassandra',
+  'elasticsearch', 'sql', 'nosql', 'dba', 'sharding', 'replication',
+  'innodb', 'b-tree', 'mvcc', 'wal', 'raft', 'paxos',
+  '数据库', '分库分表', '主从复制', '读写分离', '慢查询', '索引优化',
+  '数据迁移', '数据同步', '分布式数据库', '关系型数据库', '向量数据库',
+  '存储引擎', '数据仓库', '数据湖', '数据治理'
 ];
 
 /**
@@ -126,7 +164,7 @@ function htmlToMarkdown(html) {
 }
 
 /**
- * 智能分类新闻，判断是属于 AI 还是 运维 还是 科技
+ * 智能分类新闻，判断是属于 AI / 运维 / 数据库 还是 科技
  */
 function classifyNews(title, desc, defaultTags = []) {
   const contentToSearch = `${title} ${desc}`.toLowerCase();
@@ -134,9 +172,11 @@ function classifyNews(title, desc, defaultTags = []) {
 
   const hasAI = AI_KEYWORDS.some(keyword => contentToSearch.includes(keyword));
   const hasOps = OPS_KEYWORDS.some(keyword => contentToSearch.includes(keyword));
+  const hasDB = DB_KEYWORDS.some(keyword => contentToSearch.includes(keyword));
 
   if (hasAI) tags.add('AI');
   if (hasOps) tags.add('运维');
+  if (hasDB) tags.add('数据库');
   
   // 如果都没有匹配，且默认标签里有“科技”，就保持
   if (tags.size === 0) {
@@ -246,12 +286,13 @@ export async function collectNews(env) {
         const markdownDesc = htmlToMarkdown(description);
         const tags = classifyNews(title, markdownDesc, feed.defaultTags);
 
-        // 我们只保留 AI 和 运维 标签的文章。根据用户最新指令，Solidot 和 InfoQ 中文站需要完整收集，不受 AI/运维 关键词过滤限制。
+        // 保留 AI / 运维 / 数据库 标签的文章。Solidot、InfoQ 中文站以及数据库专题源不受关键词过滤限制。
         const hasAITag = tags.includes('AI');
         const hasOpsTag = tags.includes('运维');
-        const isBypassFilter = feed.name === 'Solidot' || feed.name === 'InfoQ 中文站';
+        const hasDBTag = tags.includes('数据库');
+        const isBypassFilter = feed.name === 'Solidot' || feed.name === 'InfoQ 中文站' || feed.bypassFilter;
         
-        if (!hasAITag && !hasOpsTag && !isBypassFilter) {
+        if (!hasAITag && !hasOpsTag && !hasDBTag && !isBypassFilter) {
           continue; // 不相关的主题，跳过
         }
 

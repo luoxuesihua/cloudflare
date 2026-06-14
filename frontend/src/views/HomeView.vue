@@ -51,7 +51,10 @@ function getNewsSourceClass(username) {
     '博客园精华区': 'src-cnblogs',
     'SegmentFault 思否': 'src-segmentfault',
     '掘金全站周榜': 'src-juejin',
-    '阮一峰的网络日志': 'src-ruanyifeng'
+    '阮一峰的网络日志': 'src-ruanyifeng',
+    'PlanetScale': 'src-planetscale',
+    'PostgreSQL 官方': 'src-postgresql',
+    '掘金后端': 'src-juejin'
   }
   return 'is-news ' + (mapping[source] || 'src-default')
 }
@@ -465,7 +468,47 @@ h1 {
   box-shadow: 0 0 8px #f97316 !important;
 }
 
-/* 10. 默认其它新闻源 (默认蓝) */
+/* 10. PlanetScale (Dark Purple) */
+.post-card.src-planetscale {
+  border-top: 3px solid #7c3aed;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-planetscale:hover {
+  border-top-color: #a78bfa;
+  border-color: rgba(124, 58, 237, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(124, 58, 237, 0.3);
+}
+.post-card.src-planetscale .source-badge {
+  color: #a78bfa !important;
+  background: rgba(124, 58, 237, 0.08) !important;
+  border-color: rgba(124, 58, 237, 0.25) !important;
+}
+.post-card.src-planetscale .dot {
+  background-color: #7c3aed !important;
+  box-shadow: 0 0 8px #7c3aed !important;
+}
+
+/* 11. PostgreSQL (Elephant Blue) */
+.post-card.src-postgresql {
+  border-top: 3px solid #336791;
+  background: linear-gradient(135deg, rgba(51, 103, 145, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-postgresql:hover {
+  border-top-color: #5b9bd5;
+  border-color: rgba(51, 103, 145, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(51, 103, 145, 0.3);
+}
+.post-card.src-postgresql .source-badge {
+  color: #5b9bd5 !important;
+  background: rgba(51, 103, 145, 0.08) !important;
+  border-color: rgba(51, 103, 145, 0.25) !important;
+}
+.post-card.src-postgresql .dot {
+  background-color: #336791 !important;
+  box-shadow: 0 0 8px #336791 !important;
+}
+
+/* 12. 默认其它新闻源 (默认蓝) */
 .post-card.src-default {
   border-top: 3px solid var(--primary);
   background: linear-gradient(135deg, rgba(14, 165, 233, 0.04), rgba(15, 23, 42, 0.35));
