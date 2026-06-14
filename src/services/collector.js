@@ -1,6 +1,6 @@
 import { Database } from '../db.js';
 
-// 定义采集源及其默认标签
+// 定义采集源及其默认标签 (只收集中文)
 const FEEDS = [
   {
     url: 'https://www.solidot.org/index.rss',
@@ -15,24 +15,50 @@ const FEEDS = [
     lang: 'zh'
   },
   {
-    url: 'https://thenewstack.io/feed/',
-    name: 'The New Stack',
-    defaultTags: ['运维'],
-    lang: 'en'
-  },
-  {
-    url: 'https://devops.com/feed/',
-    name: 'DevOps.com',
-    defaultTags: ['运维'],
-    lang: 'en'
-  },
-  {
-    url: 'https://huggingface.co/blog/feed.xml',
-    name: 'Hugging Face Blog',
+    url: 'https://www.jiqizhixin.com/rss',
+    name: '机器之心 AI',
     defaultTags: ['AI'],
-    lang: 'en'
+    lang: 'zh'
+  },
+  {
+    url: 'https://tech.meituan.com/feed',
+    name: '美团技术团队',
+    defaultTags: ['运维'],
+    lang: 'zh'
+  },
+  {
+    url: 'https://www.oschina.net/news/rss',
+    name: '开源中国',
+    defaultTags: ['科技'],
+    lang: 'zh'
+  },
+  {
+    url: 'http://feed.cnblogs.com/blog/picked/rss',
+    name: '博客园精华区',
+    defaultTags: ['科技'],
+    lang: 'zh'
+  },
+  {
+    url: 'https://segmentfault.com/feeds/blogs',
+    name: 'SegmentFault 思否',
+    defaultTags: ['科技'],
+    lang: 'zh'
+  },
+  {
+    url: 'https://rsshub.moeyy.cn/juejin/trending/all/weekly',
+    name: '掘金全站周榜',
+    defaultTags: ['科技'],
+    lang: 'zh',
+    urlBackup: [
+      'https://rsshub.rss.geek.zone/juejin/trending/all/weekly',
+      'https://rsshub.mxdawn.cc/juejin/trending/all/weekly',
+      'https://rsshub.icu/juejin/trending/all/weekly',
+      'https://rsshub.app/juejin/trending/all/weekly'
+    ]
   }
 ];
+
+
 
 // AI 相关的关键字
 const AI_KEYWORDS = [
@@ -127,20 +153,37 @@ export async function collectNews(env) {
   for (const feed of FEEDS) {
     log.push(`开始抓取源: ${feed.name} (${feed.url})`);
     try {
-      // 增加超时控制和常规 User-Agent 伪装，避免被部分 RSS 限制
-      const response = await fetch(feed.url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 RinNewsCollector/1.0',
-          'Accept': 'application/xml, text/xml, */*'
-        },
-        cf: {
-          cacheTtl: 300 // 缓存 5 分钟
-        }
-      });
+      // 增加超时控制和常规 User-Agent 伪装，避免被部分 RSS 限制，支持备份源轮询
+      let response;
+      const urlsToTry = feed.urlBackup ? [feed.url, ...feed.urlBackup] : [feed.url];
+      let lastError = null;
 
-      if (!response.ok) {
-        throw new Error(`HTTP 状态码异常: ${response.status}`);
+      for (const url of urlsToTry) {
+        try {
+          response = await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 RinNewsCollector/1.0',
+              'Accept': 'application/xml, text/xml, */*'
+            },
+            cf: {
+              cacheTtl: 300 // 缓存 5 分钟
+            }
+          });
+          if (response.ok) {
+            lastError = null;
+            break;
+          } else {
+            lastError = new Error(`HTTP 状态码异常: ${response.status} (地址: ${url})`);
+          }
+        } catch (err) {
+          lastError = err;
+        }
       }
+
+      if (lastError) {
+        throw lastError;
+      }
+
 
       const xmlText = await response.text();
       
