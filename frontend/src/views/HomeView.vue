@@ -38,6 +38,43 @@ function getNewsSource(username) {
   return null
 }
 
+// 获取新闻源对应的样式类
+function getNewsSourceClass(username) {
+  const source = getNewsSource(username)
+  if (!source) return ''
+  const mapping = {
+    'Solidot': 'src-solidot',
+    'InfoQ 中文站': 'src-infoq',
+    '机器之心 AI': 'src-jiqizhixin',
+    '美团技术团队': 'src-meituan',
+    '开源中国': 'src-oschina',
+    '博客园精华区': 'src-cnblogs',
+    'SegmentFault 思否': 'src-segmentfault',
+    '掘金全站周榜': 'src-juejin',
+    '阮一峰的网络日志': 'src-ruanyifeng'
+  }
+  return 'is-news ' + (mapping[source] || 'src-default')
+}
+
+// 格式化摘要，移除 Markdown 与 HTML，限制长度
+function getExcerpt(snippet) {
+  if (!snippet) return ''
+  let text = snippet
+  // 移除可能存在的 HTML 标签
+  text = text.replace(/<[^>]+>/g, '')
+  // 移除 markdown 链接 [text](link) -> text
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+  // 移除 markdown 格式字符 (如 #, *, `, _, -)
+  text = text.replace(/[#*`_-]/g, '')
+  // 去除多余的换行与空白
+  text = text.replace(/\s+/g, ' ').trim()
+  
+  if (text.length > 90) {
+    return text.substring(0, 90) + '...'
+  }
+  return text
+}
+
 onMounted(fetchPosts)
 </script>
 
@@ -67,12 +104,17 @@ onMounted(fetchPosts)
         v-for="post in posts" 
         :key="post.id" 
         class="post-card"
-        :class="{ 'is-news': getNewsSource(post.username) }"
+        :class="getNewsSourceClass(post.username)"
       >
         <span class="date">{{ new Date(post.created_at).toLocaleDateString('zh-CN') }}</span>
         <h2 class="post-title">
           <RouterLink :to="'/post/' + post.id">{{ post.title }}</RouterLink>
         </h2>
+        
+        <!-- 文章内容简介 -->
+        <p v-if="post.snippet" class="post-excerpt">
+          {{ getExcerpt(post.snippet) }}
+        </p>
         
         <div class="post-meta">
           <span v-if="getNewsSource(post.username)" class="source-badge">
@@ -241,6 +283,208 @@ h1 {
   box-shadow: 0 12px 45px -12px rgba(14, 165, 233, 0.35);
 }
 
+/* ==================== 专属新闻源高级配色与动效 ==================== */
+
+/* 1. Solidot (极客绿) */
+.post-card.src-solidot {
+  border-top: 3px solid #10b981;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-solidot:hover {
+  border-top-color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(16, 185, 129, 0.3);
+}
+.post-card.src-solidot .source-badge {
+  color: #34d399 !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+.post-card.src-solidot .dot {
+  background-color: #10b981 !important;
+  box-shadow: 0 0 8px #10b981 !important;
+}
+
+/* 2. InfoQ 中文站 (架构红) */
+.post-card.src-infoq {
+  border-top: 3px solid #e11d48;
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-infoq:hover {
+  border-top-color: #fb7185;
+  border-color: rgba(225, 29, 72, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(225, 29, 72, 0.3);
+}
+.post-card.src-infoq .source-badge {
+  color: #fb7185 !important;
+  background: rgba(225, 29, 72, 0.08) !important;
+  border-color: rgba(225, 29, 72, 0.25) !important;
+}
+.post-card.src-infoq .dot {
+  background-color: #e11d48 !important;
+  box-shadow: 0 0 8px #e11d48 !important;
+}
+
+/* 3. 机器之心 AI (大模型紫) */
+.post-card.src-jiqizhixin {
+  border-top: 3px solid #8b5cf6;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-jiqizhixin:hover {
+  border-top-color: #a78bfa;
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(139, 92, 246, 0.3);
+}
+.post-card.src-jiqizhixin .source-badge {
+  color: #a78bfa !important;
+  background: rgba(139, 92, 246, 0.08) !important;
+  border-color: rgba(139, 92, 246, 0.25) !important;
+}
+.post-card.src-jiqizhixin .dot {
+  background-color: #8b5cf6 !important;
+  box-shadow: 0 0 8px #8b5cf6 !important;
+}
+
+/* 4. 美团技术团队 (美团黄) */
+.post-card.src-meituan {
+  border-top: 3px solid #eab308;
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-meituan:hover {
+  border-top-color: #facc15;
+  border-color: rgba(234, 179, 8, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(234, 179, 8, 0.3);
+}
+.post-card.src-meituan .source-badge {
+  color: #facc15 !important;
+  background: rgba(234, 179, 8, 0.08) !important;
+  border-color: rgba(234, 179, 8, 0.25) !important;
+}
+.post-card.src-meituan .dot {
+  background-color: #eab308 !important;
+  box-shadow: 0 0 8px #eab308 !important;
+}
+
+/* 5. 开源中国 (社区绿) */
+.post-card.src-oschina {
+  border-top: 3px solid #22c55e;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-oschina:hover {
+  border-top-color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(34, 197, 94, 0.3);
+}
+.post-card.src-oschina .source-badge {
+  color: #4ade80 !important;
+  background: rgba(34, 197, 94, 0.08) !important;
+  border-color: rgba(34, 197, 94, 0.25) !important;
+}
+.post-card.src-oschina .dot {
+  background-color: #22c55e !important;
+  box-shadow: 0 0 8px #22c55e !important;
+}
+
+/* 6. 博客园精华区 (清风蓝) */
+.post-card.src-cnblogs {
+  border-top: 3px solid #0284c7;
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-cnblogs:hover {
+  border-top-color: #38bdf8;
+  border-color: rgba(2, 132, 199, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(2, 132, 199, 0.3);
+}
+.post-card.src-cnblogs .source-badge {
+  color: #38bdf8 !important;
+  background: rgba(2, 132, 199, 0.08) !important;
+  border-color: rgba(2, 132, 199, 0.25) !important;
+}
+.post-card.src-cnblogs .dot {
+  background-color: #0284c7 !important;
+  box-shadow: 0 0 8px #0284c7 !important;
+}
+
+/* 7. SegmentFault 思否 (雅致青) */
+.post-card.src-segmentfault {
+  border-top: 3px solid #0d9488;
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-segmentfault:hover {
+  border-top-color: #2dd4bf;
+  border-color: rgba(13, 148, 136, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(13, 148, 136, 0.3);
+}
+.post-card.src-segmentfault .source-badge {
+  color: #2dd4bf !important;
+  background: rgba(13, 148, 136, 0.08) !important;
+  border-color: rgba(13, 148, 136, 0.25) !important;
+}
+.post-card.src-segmentfault .dot {
+  background-color: #0d9488 !important;
+  box-shadow: 0 0 8px #0d9488 !important;
+}
+
+/* 8. 掘金全站周榜 (先锋蓝) */
+.post-card.src-juejin {
+  border-top: 3px solid #2563eb;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-juejin:hover {
+  border-top-color: #60a5fa;
+  border-color: rgba(37, 99, 235, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(37, 99, 235, 0.3);
+}
+.post-card.src-juejin .source-badge {
+  color: #60a5fa !important;
+  background: rgba(37, 99, 235, 0.08) !important;
+  border-color: rgba(37, 99, 235, 0.25) !important;
+}
+.post-card.src-juejin .dot {
+  background-color: #2563eb !important;
+  box-shadow: 0 0 8px #2563eb !important;
+}
+
+/* 9. 阮一峰的网络日志 (活力橙) */
+.post-card.src-ruanyifeng {
+  border-top: 3px solid #f97316;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-ruanyifeng:hover {
+  border-top-color: #fb923c;
+  border-color: rgba(249, 115, 22, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(249, 115, 22, 0.3);
+}
+.post-card.src-ruanyifeng .source-badge {
+  color: #fb923c !important;
+  background: rgba(249, 115, 22, 0.08) !important;
+  border-color: rgba(249, 115, 22, 0.25) !important;
+}
+.post-card.src-ruanyifeng .dot {
+  background-color: #f97316 !important;
+  box-shadow: 0 0 8px #f97316 !important;
+}
+
+/* 10. 默认其它新闻源 (默认蓝) */
+.post-card.src-default {
+  border-top: 3px solid var(--primary);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.04), rgba(15, 23, 42, 0.35));
+}
+.post-card.src-default:hover {
+  border-top-color: var(--primary-hover);
+  border-color: rgba(14, 165, 233, 0.4);
+  box-shadow: 0 12px 40px -12px rgba(14, 165, 233, 0.35);
+}
+.post-card.src-default .source-badge {
+  color: var(--primary-hover) !important;
+  background: rgba(14, 165, 233, 0.08) !important;
+  border-color: rgba(14, 165, 233, 0.25) !important;
+}
+.post-card.src-default .dot {
+  background-color: var(--primary) !important;
+  box-shadow: 0 0 8px var(--primary) !important;
+}
+
 .date {
   font-family: var(--font-code);
   font-size: 0.8rem;
@@ -250,8 +494,7 @@ h1 {
 }
 
 .post-title {
-  margin-bottom: 16px;
-  flex-grow: 1;
+  margin-bottom: 12px;
 }
 
 .post-title a {
@@ -264,6 +507,20 @@ h1 {
 
 .post-title a:hover { 
   color: var(--primary-hover); 
+}
+
+/* 文章内容简介排版 */
+.post-excerpt {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  flex-grow: 1; /* 自动撑开以使卡片底部对齐 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ===== 标签与作者元信息 ===== */

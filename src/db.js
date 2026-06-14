@@ -52,7 +52,7 @@ export class Database {
 
     // ========== 文章相关 ==========
     async findAllPosts(tag = null) {
-        const query = "SELECT id, title, username, tags, created_at FROM notes ORDER BY created_at DESC";
+        const query = "SELECT id, title, username, tags, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes ORDER BY created_at DESC";
         const { results } = await this.db.prepare(query).all();
         if (tag) {
             return results.filter(n => (n.tags || '').split(',').map(t => t.trim()).includes(tag));

@@ -246,10 +246,12 @@ export async function collectNews(env) {
         const markdownDesc = htmlToMarkdown(description);
         const tags = classifyNews(title, markdownDesc, feed.defaultTags);
 
-        // 我们只保留 AI 和 运维 标签的文章，如果过滤出来的标签不包含 AI 和 运维，我们跳过它（除了 Solidot/阮一峰等极高质量源，也做同样的过滤以保证内容集中）
+        // 我们只保留 AI 和 运维 标签的文章。根据用户最新指令，Solidot 和 InfoQ 中文站需要完整收集，不受 AI/运维 关键词过滤限制。
         const hasAITag = tags.includes('AI');
         const hasOpsTag = tags.includes('运维');
-        if (!hasAITag && !hasOpsTag) {
+        const isBypassFilter = feed.name === 'Solidot' || feed.name === 'InfoQ 中文站';
+        
+        if (!hasAITag && !hasOpsTag && !isBypassFilter) {
           continue; // 不相关的主题，跳过
         }
 
