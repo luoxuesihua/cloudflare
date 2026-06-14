@@ -45,6 +45,13 @@ const FEEDS = [
     lang: 'zh'
   },
   {
+    url: 'https://www.infoq.cn/feed',
+    name: 'InfoQ 中文站',
+    defaultTags: ['科技'],
+    lang: 'zh'
+  },
+
+  {
     url: 'https://rsshub.moeyy.cn/juejin/trending/all/weekly',
     name: '掘金全站周榜',
     defaultTags: ['科技'],
@@ -256,8 +263,9 @@ export async function collectNews(env) {
         formattedContent += `\n\n---\n*本文由 AI 收集器自动抓取。来源: [阅读原文](${link})*`;
 
         // 6. 写入 D1 数据库
-        // 用户 ID = 0, 用户名 = 'NewsBot' 代表系统自动采集
-        await db.createPost(0, 'NewsBot', title, formattedContent, tags);
+        // 用户 ID = 0, 用户名 = 'NewsBot (源名称)' 代表系统自动采集
+        await db.createPost(0, `NewsBot (${feed.name})`, title, formattedContent, tags);
+
 
         // 7. 写入 KV 去重标记，有效期 14 天
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 14 * 24 * 60 * 60 });
