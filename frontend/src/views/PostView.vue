@@ -22,9 +22,11 @@ onMounted(async () => {
 function renderMarkdown(text) {
   if (!text) return ''
   let html = text
+  html = html.replace(/^---$/gm, '<hr>')
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
@@ -136,6 +138,14 @@ function renderMarkdown(text) {
 .markdown-body :deep(pre code) { background: none; padding: 0; }
 .markdown-body :deep(li) { margin-left: 20px; margin-bottom: 4px; }
 .markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3) { margin-top: 1.5em; margin-bottom: 0.5em; }
+.markdown-body :deep(hr) {
+  border: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 25px 0;
+}
+.markdown-body :deep(a) { color: var(--primary); text-decoration: none; }
+.markdown-body :deep(a:hover) { text-decoration: underline; }
 
 .post-nav a { color: var(--text-muted); }
 .post-nav a:hover { color: var(--primary); }

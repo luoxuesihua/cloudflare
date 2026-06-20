@@ -64,21 +64,6 @@ const FEEDS = [
     ]
   },
 
-  // ===== 数据库 / DBA 专题源 =====
-  {
-    url: 'https://planetscale.com/blog/rss.xml',
-    name: 'PlanetScale',
-    defaultTags: ['数据库'],
-    lang: 'en',
-    bypassFilter: true
-  },
-  {
-    url: 'https://www.postgresql.org/news.rss',
-    name: 'PostgreSQL 官方',
-    defaultTags: ['数据库'],
-    lang: 'en',
-    bypassFilter: true
-  },
   {
     url: 'https://rsshub.icu/juejin/category/backend',
     name: '掘金后端',
@@ -126,20 +111,63 @@ const DB_KEYWORDS = [
 ];
 
 /**
+ * 解码 HTML 实体
+ */
+function decodeHtmlEntities(text) {
+  if (!text) return '';
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+/**
+ * 清理纯文本（标题等）
+ */
+function cleanPlainText(text) {
+  if (!text) return '';
+  let result = decodeHtmlEntities(text);
+  result = result.replace(/<[^>]+>/g, '');
+  result = result.replace(/\s+/g, ' ').trim();
+  return result;
+}
+
+/**
+ * 判断文本是否以中文为主
+ */
+function isPredominantlyChinese(text) {
+  if (!text || !text.trim()) return false;
+  const chinese = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g) || []).length;
+  const latin = (text.match(/[a-zA-Z]/g) || []).length;
+  const total = chinese + latin;
+  if (total === 0) return false;
+  return chinese >= 2 && chinese / total >= 0.3;
+}
+
+/**
  * 将 HTML 内容转换为干净的 Markdown 格式
  */
 function htmlToMarkdown(html) {
   if (!html) return '';
   let text = html;
-  
-  // 移除 script 和 style 标签及其内容
+
   text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
-  
-  // 转换常见 HTML 标签
+
+  text = text.replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '\n\n```\n$1\n```\n\n');
+  text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
   text = text.replace(/<br\s*\/?>/gi, '\n');
   text = text.replace(/<\/p>/gi, '\n\n');
   text = text.replace(/<p[^>]*>/gi, '');
+  text = text.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, '\n\n> $1\n\n');
+  text = text.replace(/<hr\s*\/?>/gi, '\n\n---\n\n');
+  text = text.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*\/?>/gi, '![$1]($2)');
+  text = text.replace(/<img[^>]*src=["']([^"']+)["'][^>]*\/?>/gi, '![]($1)');
   text = text.replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
   text = text.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, '**$1**');
   text = text.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, '**$1**');
@@ -147,20 +175,58 @@ function htmlToMarkdown(html) {
   text = text.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, '*$1*');
   text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
   text = text.replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '\n\n### $1\n\n');
-  
-  // 移除其余所有 HTML 标签
   text = text.replace(/<[^>]+>/g, '');
-  
-  // 还原常见的 HTML 实体字符
-  text = text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
-    
+
+  text = decodeHtmlEntities(text);
+  text = text.replace(/\r\n/g, '\n');
+  text = text.replace(/\n{3,}/g, '\n\n');
+  text = text.replace(/[ \t]+\n/g, '\n');
+  text = text.replace(/\n[ \t]+/g, '\n');
+
   return text.trim();
+}
+
+/**
+ * 规范化正文，去除与标题重复的开头
+ */
+function normalizeBody(body, title) {
+  let content = body.trim();
+  if (!content) return '';
+
+  const plainTitle = cleanPlainText(title);
+  if (plainTitle && content.startsWith(plainTitle)) {
+    content = content.slice(plainTitle.length).trim();
+  }
+
+  content = content.replace(/^#{1,6}\s*.+\n+/m, '').trim();
+  return content;
+}
+
+/**
+ * 统一采集文章 Markdown 格式
+ */
+function formatCollectedArticle({ title, body, link, sourceName }) {
+  const normalizedBody = normalizeBody(body, title);
+
+  let main = normalizedBody;
+  if (!main) {
+    main = `本文摘录自 **${sourceName}** 的 RSS 订阅，完整内容请通过下方原文链接查看。`;
+  }
+
+  if (main.length > 100000) {
+    main = main.substring(0, 100000) + '\n\n...（正文过长已截取）';
+  }
+
+  return [
+    main,
+    '',
+    '---',
+    '',
+    `**来源**：${sourceName}`,
+    `**原文链接**：[点击查看](${link})`,
+    '',
+    '*本文由 AI 收集器自动抓取*'
+  ].join('\n');
 }
 
 /**
@@ -267,11 +333,20 @@ export async function collectNews(env) {
 
         if (!title || !link) continue;
 
+        const cleanTitle = cleanPlainText(title);
+        if (!cleanTitle) continue;
+
         // 3. 提取描述/内容
         let description = '';
         const descMatch = itemContent.match(/<(content:encoded|content|description|summary)(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/i);
         if (descMatch) {
           description = descMatch[2].trim();
+        }
+
+        // 仅保留中文内容
+        const markdownDesc = htmlToMarkdown(description);
+        if (!isPredominantlyChinese(`${cleanTitle} ${markdownDesc}`)) {
+          continue;
         }
 
         // 4. 数据去重 (KV 键名为 base64 编码的链接)
@@ -283,31 +358,28 @@ export async function collectNews(env) {
         }
 
         // 5. 格式化和分类
-        const markdownDesc = htmlToMarkdown(description);
-        const tags = classifyNews(title, markdownDesc, feed.defaultTags);
+        const tags = classifyNews(cleanTitle, markdownDesc, feed.defaultTags);
 
-        // 保留 AI / 运维 / 数据库 标签的文章。Solidot、InfoQ 中文站以及数据库专题源不受关键词过滤限制。
+        // 保留 AI / 运维 / 数据库 标签的文章。Solidot、InfoQ 中文站不受关键词过滤限制。
         const hasAITag = tags.includes('AI');
         const hasOpsTag = tags.includes('运维');
         const hasDBTag = tags.includes('数据库');
-        const isBypassFilter = feed.name === 'Solidot' || feed.name === 'InfoQ 中文站' || feed.bypassFilter;
+        const isBypassFilter = feed.name === 'Solidot' || feed.name === 'InfoQ 中文站';
         
         if (!hasAITag && !hasOpsTag && !hasDBTag && !isBypassFilter) {
           continue; // 不相关的主题，跳过
         }
 
-        // 拼接 Markdown 正文
-        let formattedContent = markdownDesc;
-        // 如果内容太长，适当截取，防止超出 Cloudflare D1 SQL 大小限制 (1MB)
-        if (formattedContent.length > 100000) {
-          formattedContent = formattedContent.substring(0, 100000) + '... (正文过长已截取)';
-        }
-        
-        formattedContent += `\n\n---\n*本文由 AI 收集器自动抓取。来源: [阅读原文](${link})*`;
+        const formattedContent = formatCollectedArticle({
+          title: cleanTitle,
+          body: markdownDesc,
+          link,
+          sourceName: feed.name
+        });
 
         // 6. 写入 D1 数据库
         // 用户 ID = 0, 用户名 = 'NewsBot (源名称)' 代表系统自动采集
-        await db.createPost(0, `NewsBot (${feed.name})`, title, formattedContent, tags);
+        await db.createPost(0, `NewsBot (${feed.name})`, cleanTitle, formattedContent, tags);
 
 
         // 7. 写入 KV 去重标记，有效期 14 天
