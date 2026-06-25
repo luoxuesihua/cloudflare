@@ -12,6 +12,9 @@ export class Database {
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         tags TEXT DEFAULT '',
+        category TEXT DEFAULT 'general',
+        hot_score INTEGER DEFAULT 50,
+        source_name TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -39,39 +42,71 @@ export class Database {
       )
     `).run();
 
-        // 尝试添加新字段（用于兼容旧表结构）
-        try {
-            // 注意：SQLite ALTER TABLE 添加 UNIQUE 列可能因现有数据（虽为空）或特定驱动限制而失败
-            // 这里只添加列，唯一性由应用层逻辑保证
-            await this.db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run();
-        } catch (e) { }
-        try {
-            await this.db.prepare("ALTER TABLE users ADD COLUMN phone TEXT").run();
-        } catch (e) { }
+        // 兼容旧表结构：添加新字段
+        const alterCols = [
+            "ALTER TABLE notes ADD COLUMN category TEXT DEFAULT 'general'",
+            "ALTER TABLE notes ADD COLUMN hot_score INTEGER DEFAULT 50",
+            "ALTER TABLE notes ADD COLUMN source_name TEXT DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN email TEXT",
+            "ALTER TABLE users ADD COLUMN phone TEXT"
+        ];
+        for (const sql of alterCols) {
+            try { await this.db.prepare(sql).run(); } catch (e) { /* 列已存在 */ }
+        }
     }
 
     // ========== 文章相关 ==========
-    async findAllPosts(tag = null) {
-        const query = "SELECT id, title, username, tags, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes ORDER BY created_at DESC";
-        const { results } = await this.db.prepare(query).all();
+    async findAllPosts(tag = null, category = null, source = null, sortBy = 'created_at', order = 'DESC', limit = 100, offset = 0) {
+        let { results } = await this.db.prepare(
+            "SELECT id, title, username, tags, category, hot_score, source_name, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes ORDER BY created_at DESC"
+        ).all();
+
         if (tag) {
-            return results.filter(n => (n.tags || '').split(',').map(t => t.trim()).includes(tag));
+            results = results.filter(n => (n.tags || '').split(',').map(t => t.trim()).includes(tag));
         }
-        return results;
+        if (category) {
+            results = results.filter(n => (n.category || 'general') === category);
+        }
+        if (source) {
+            results = results.filter(n => {
+                const sn = n.source_name || extractSourceFromUsername(n.username);
+                return sn && sn.includes(source);
+            });
+        }
+
+        // 按热度排序或时间排序
+        if (sortBy === 'hot_score') {
+            results.sort((a, b) => (b.hot_score || 50) - (a.hot_score || 50));
+        }
+
+        const total = results.length;
+        const paged = results.slice(offset, offset + limit);
+
+        return { posts: paged, total };
     }
 
     async findPostById(id) {
         return await this.db.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first();
     }
 
-    async createPost(userId, username, title, content, tags) {
+    async createPost(userId, username, title, content, tags, hotScore = 50, category = 'general', sourceName = '') {
         return await this.db.prepare(
-            "INSERT INTO notes (user_id, username, title, content, tags) VALUES (?, ?, ?, ?, ?)"
-        ).bind(userId, username, title, content, tags).run();
+            "INSERT INTO notes (user_id, username, title, content, tags, hot_score, category, source_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        ).bind(userId, username, title, content, tags, hotScore, category, sourceName).run();
     }
 
     async deletePost(id) {
         return await this.db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
+    }
+
+    // 分类统计
+    async getCategoryStats() {
+        try {
+            const { results } = await this.db.prepare(
+                "SELECT category, COUNT(*) as count FROM notes WHERE category IS NOT NULL AND category != '' GROUP BY category"
+            ).all();
+            return results || [];
+        } catch (e) { return []; }
     }
 
     // ========== 用户相关 ==========
@@ -140,4 +175,15 @@ export class Database {
             "UPDATE users SET password_hash = ? WHERE id = ?"
         ).bind(newHash, userId).run();
     }
+}
+
+// 从 username 提取 NewsBot 源名称
+export function extractSourceFromUsername(username) {
+    if (username && username.startsWith('NewsBot (')) {
+        return username.substring(9, username.length - 1);
+    }
+    if (username && username.startsWith('热搜Bot (')) {
+        return username.substring(6, username.length - 1);
+    }
+    return null;
 }

@@ -1,21 +1,20 @@
 
+
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import auth from './routes/auth'
 import posts from './routes/posts'
 import { Database } from './db'
-import { collectNews } from './services/collector.js'
+import { collectNews, collectHotSearch } from './services/collector.js'
 
 
 const app = new Hono()
 
 // Middleware
 app.use('/*', cors())
-
-// Initialize DB on first request (lazy init)
 app.use('*', async (c, next) => {
   const db = new Database(c.env)
-  await db.init() // Ensure tables exist
+  await db.init()
   await next()
 })
 
@@ -31,7 +30,15 @@ app.all('*', async (c) => {
 export default {
   fetch: app.fetch,
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(collectNews(env))
+    // 根据 cron 表达式区分任务类型
+    // RSS 新闻采集：每 4 小时
+    // 热搜采集：每 30 分钟
+    const cron = event.cron || ''
+    if (cron.includes('*/30')) {
+      ctx.waitUntil(collectHotSearch(env))
+    } else {
+      ctx.waitUntil(collectNews(env))
+    }
   }
 }
 

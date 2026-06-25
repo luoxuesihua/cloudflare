@@ -28,5 +28,5 @@ ENVIRONMENT = "production"
 RESEND_FROM = "noreply@suyuank.top"
 
 [triggers]
-crons = ["0 */4 * * *"]
+crons = ["0 */4 * * *", "*/30 * * * *"]
 

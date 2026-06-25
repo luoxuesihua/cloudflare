@@ -24,7 +24,7 @@ const closeMenu = () => {
     <header class="main-header glass-panel">
       <div class="container header-content">
         <RouterLink to="/" class="logo" @click="closeMenu">
-          RIN<span class="dot">.</span>
+          万象<span class="dot">.</span>新闻
         </RouterLink>
 
         <!-- 汉堡菜单按钮 (移动端) -->
@@ -63,7 +63,7 @@ const closeMenu = () => {
 
     <footer class="main-footer">
       <div class="container">
-        <p>&copy; 2024 Rin · 基于 Cloudflare Workers 构建</p>
+        <p>&copy; 2025 万象新闻 · 基于 Cloudflare Workers 构建 · 聚合 30+ 优质信息源</p>
       </div>
     </footer>
   </div>

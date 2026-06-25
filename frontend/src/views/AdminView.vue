@@ -111,7 +111,8 @@ async function fetchPosts() {
   isLoading.value = true
   try {
     const res = await fetch('/api/posts')
-    posts.value = await res.json()
+    const data = await res.json()
+    posts.value = Array.isArray(data) ? data : (data.posts || [])
   } catch (e) { console.error(e) }
   finally { isLoading.value = false }
 }

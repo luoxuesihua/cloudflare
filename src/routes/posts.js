@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
-import { collectNews } from '../services/collector.js'
+import { collectNews, collectHotSearch } from '../services/collector.js'
 
 
 const posts = new Hono()
@@ -16,12 +16,26 @@ async function getUser(c) {
     return userStr ? JSON.parse(userStr) : null;
 }
 
-// 获取文章列表（支持标签过滤）
+// ========== 文章列表（支持多维度筛选） ==========
 posts.get('/', async (c) => {
     const tag = c.req.query('tag')
+    const category = c.req.query('category')
+    const source = c.req.query('source')
+    const sortBy = c.req.query('sort') || 'created_at'    // created_at | hot_score
+    const order = c.req.query('order') || 'DESC'
+    const limit = parseInt(c.req.query('limit') || '100', 10)
+    const offset = parseInt(c.req.query('offset') || '0', 10)
+
     const db = getDb(c)
-    const list = await db.findAllPosts(tag)
-    return c.json(list)
+    const result = await db.findAllPosts(tag, category, source, sortBy, order, limit, offset)
+    return c.json(result)
+})
+
+// 分类统计
+posts.get('/stats', async (c) => {
+    const db = getDb(c)
+    const stats = await db.getCategoryStats()
+    return c.json(stats)
 })
 
 // 获取单篇文章
@@ -38,11 +52,11 @@ posts.post('/', async (c) => {
     const user = await getUser(c)
     if (!user) return c.json({ error: '请先登录' }, 401)
 
-    const { title, content, tags } = await c.req.json()
+    const { title, content, tags, category } = await c.req.json()
     if (!title || !content) return c.json({ error: '标题和内容不能为空' }, 400)
 
     const db = getDb(c)
-    await db.createPost(user.id, user.username, title, content, tags || '')
+    await db.createPost(user.id, user.username, title, content, tags || '', 50, category || 'general')
     return c.json({ success: true }, 201)
 })
 
@@ -57,7 +71,7 @@ posts.delete('/:id', async (c) => {
     return c.json({ success: true })
 })
 
-// 手动采集新闻（仅限管理员）
+// 手动采集 RSS 新闻（仅限管理员）
 posts.post('/collect', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
@@ -66,5 +80,13 @@ posts.post('/collect', async (c) => {
     return c.json(result)
 })
 
-export default posts
+// 手动采集热搜（仅限管理员）
+posts.post('/collect-hot', async (c) => {
+    const user = await getUser(c)
+    if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
 
+    const result = await collectHotSearch(c.env)
+    return c.json(result)
+})
+
+export default posts
