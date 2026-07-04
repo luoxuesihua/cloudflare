@@ -69,19 +69,19 @@ const FEEDS_AI = [
     url: 'https://rsshub.app/36kr/motif/3276897824862212',
     name: '36氪 AI', category: 'ai', hotScore: 80, lang: 'zh',
     desc: 'AI 产业报道',
-    urlBackup: ['https://rsshub.moeyy.cn/36kr/motif/3276897824862212']
+    urlBackup: ['https://rsshub.moeyy.cn/36kr/motif/3276897824862212', 'https://rsshub.pseudoyu.com/36kr/motif/3276897824862212', 'https://rsshub.wheremylife.cn/36kr/motif/3276897824862212']
   },
   {
     url: 'https://rsshub.app/jiqizhixin/categories/1',
     name: '机器之心精选', category: 'ai', hotScore: 78, lang: 'zh',
     desc: 'AI 精选文章',
-    urlBackup: ['https://rsshub.moeyy.cn/jiqizhixin/categories/1']
+    urlBackup: ['https://rsshub.moeyy.cn/jiqizhixin/categories/1', 'https://rsshub.pseudoyu.com/jiqizhixin/categories/1', 'https://rsshub.wheremylife.cn/jiqizhixin/categories/1']
   },
   {
     url: 'https://rsshub.app/huggingface/daily-papers',
     name: 'HuggingFace 日报', category: 'ai', hotScore: 90, lang: 'zh',
     desc: 'AI 论文日报',
-    urlBackup: ['https://rsshub.moeyy.cn/huggingface/daily-papers']
+    urlBackup: ['https://rsshub.moeyy.cn/huggingface/daily-papers', 'https://rsshub.pseudoyu.com/huggingface/daily-papers', 'https://rsshub.wheremylife.cn/huggingface/daily-papers']
   },
 ];
 
@@ -91,25 +91,25 @@ const FEEDS_DEV = [
     url: 'https://rsshub.app/juejin/category/frontend',
     name: '掘金前端', category: 'dev', hotScore: 75, lang: 'zh',
     desc: '前端技术文章',
-    urlBackup: ['https://rsshub.moeyy.cn/juejin/category/frontend', 'https://rsshub.icu/juejin/category/frontend']
+    urlBackup: ['https://rsshub.moeyy.cn/juejin/category/frontend', 'https://rsshub.pseudoyu.com/juejin/category/frontend', 'https://rsshub.wheremylife.cn/juejin/category/frontend']
   },
   {
     url: 'https://rsshub.app/juejin/category/backend',
     name: '掘金后端', category: 'dev', hotScore: 75, lang: 'zh',
     desc: '后端技术文章',
-    urlBackup: ['https://rsshub.moeyy.cn/juejin/category/backend', 'https://rsshub.icu/juejin/category/backend']
+    urlBackup: ['https://rsshub.moeyy.cn/juejin/category/backend', 'https://rsshub.pseudoyu.com/juejin/category/backend', 'https://rsshub.wheremylife.cn/juejin/category/backend']
   },
   {
     url: 'https://rsshub.app/v2ex/topics/hot',
     name: 'V2EX 热门', category: 'dev', hotScore: 78, lang: 'zh',
     desc: '创意工作者社区',
-    urlBackup: ['https://rsshub.moeyy.cn/v2ex/topics/hot']
+    urlBackup: ['https://rsshub.moeyy.cn/v2ex/topics/hot', 'https://rsshub.pseudoyu.com/v2ex/topics/hot', 'https://rsshub.wheremylife.cn/v2ex/topics/hot']
   },
   {
     url: 'https://rsshub.app/github/trending/daily',
     name: 'GitHub 趋势', category: 'dev', hotScore: 85, lang: 'zh',
     desc: '每日 GitHub 热门项目',
-    urlBackup: ['https://rsshub.moeyy.cn/github/trending/daily']
+    urlBackup: ['https://rsshub.moeyy.cn/github/trending/daily', 'https://rsshub.pseudoyu.com/github/trending/daily', 'https://rsshub.wheremylife.cn/github/trending/daily']
   },
 ];
 
@@ -134,13 +134,13 @@ const FEEDS_PRODUCT = [
     url: 'https://rsshub.app/sspai',
     name: '少数派', category: 'product', hotScore: 72, lang: 'zh',
     desc: '数字生活与效率指南',
-    urlBackup: ['https://rsshub.moeyy.cn/sspai']
+    urlBackup: ['https://rsshub.moeyy.cn/sspai', 'https://rsshub.pseudoyu.com/sspai', 'https://rsshub.wheremylife.cn/sspai']
   },
   {
     url: 'https://rsshub.app/uisdc/topic/design',
     name: '优设网', category: 'product', hotScore: 65, lang: 'zh',
     desc: '设计师交流平台',
-    urlBackup: ['https://rsshub.moeyy.cn/uisdc/topic/design']
+    urlBackup: ['https://rsshub.moeyy.cn/uisdc/topic/design', 'https://rsshub.pseudoyu.com/uisdc/topic/design', 'https://rsshub.wheremylife.cn/uisdc/topic/design']
   },
 ];
 
@@ -233,7 +233,7 @@ function isPredominantlyChinese(text) {
   const chinese = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/g) || []).length;
   const total = text.replace(/\s/g, '').length;
   if (total === 0) return false;
-  return chinese / total >= 0.25;
+  return chinese / total >= 0.10; // 放宽到 10%，因为科技文章经常包含大量英文代码和术语
 }
 
 function htmlToMarkdown(html) {
@@ -455,7 +455,11 @@ export async function collectNews(env) {
         if (descMatch) description = descMatch[2].trim();
 
         const markdownDesc = htmlToMarkdown(description);
-        if (!isPredominantlyChinese(`${title} ${markdownDesc}`)) continue;
+        
+        // 放过 dev 和 ai 分类（GitHub Trending, HuggingFace papers 往往含有大量英文）
+        if (feed.category !== 'dev' && feed.category !== 'ai') {
+          if (!isPredominantlyChinese(`${title} ${markdownDesc}`)) continue;
+        }
 
         // KV 去重
         const kvKey = `pn:news:${btoa(encodeURIComponent(link)).replace(/=/g, '')}`;
