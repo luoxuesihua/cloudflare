@@ -305,13 +305,25 @@ async function fetchWeiboHot(env) {
     });
     if (!resp.ok) return [];
     const data = await resp.json();
-    const items = (data?.data?.realtime || []).slice(0, 20);
+    const allItems = data?.data?.realtime || [];
+    
+    // AI & IT 相关的关键词
+    const keywords = ['AI', '人工智能', '大模型', '芯片', '半导体', '苹果', '华为', '微软', '谷歌', '腾讯', '阿里', '百度', '字节', '自动驾驶', '机器人', '程序员', '代码', '软件', '硬件', '科技', 'IT', '系统', '网络安全'];
+    
+    // 根据关键词过滤
+    const filteredItems = allItems.filter(item => {
+      const text = ((item.word || '') + (item.note || '')).toUpperCase();
+      return keywords.some(kw => text.includes(kw.toUpperCase()));
+    });
+    
+    const items = filteredItems.slice(0, 20);
+    
     return items.map((item, i) => ({
       title: item.word || item.note || '',
       link: `https://s.weibo.com/weibo?q=${encodeURIComponent(item.word || '')}`,
       description: item.note || '',
       hotValue: item.num || 0,
-      rank: i + 1,
+      rank: item.rank || i + 1,
       source: 'weibo',
       sourceName: '微博热搜'
     }));
