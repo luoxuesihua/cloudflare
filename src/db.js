@@ -99,6 +99,14 @@ export class Database {
         return await this.db.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
     }
 
+    async deletePostsByIds(ids) {
+        if (!ids || !ids.length) return null;
+        const placeholders = ids.map(() => '?').join(',');
+        const stmt = this.db.prepare(`DELETE FROM notes WHERE id IN (${placeholders})`);
+        // D1 bind 支持可变参数，逐个绑定
+        return await stmt.bind(...ids).run();
+    }
+
     // 分类统计
     async getCategoryStats() {
         try {

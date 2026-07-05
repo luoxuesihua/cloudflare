@@ -71,6 +71,21 @@ posts.delete('/:id', async (c) => {
     return c.json({ success: true })
 })
 
+// 批量删除文章（仅限管理员）
+posts.post('/bulk-delete', async (c) => {
+    const user = await getUser(c)
+    if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
+
+    const { ids } = await c.req.json()
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return c.json({ error: '请选择要删除的文章' }, 400)
+    }
+
+    const db = getDb(c)
+    await db.deletePostsByIds(ids)
+    return c.json({ success: true, deleted: ids.length })
+})
+
 // 手动采集 RSS 新闻（仅限管理员）
 posts.post('/collect', async (c) => {
     const user = await getUser(c)

@@ -17,6 +17,44 @@ const posts = ref([])
 const users = ref([])
 const isLoading = ref(false)
 
+// 批量选择
+const selectedIds = ref(new Set())
+const isAllSelected = computed(() => posts.value.length > 0 && selectedIds.value.size === posts.value.length)
+
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    selectedIds.value = new Set()
+  } else {
+    selectedIds.value = new Set(posts.value.map(p => p.id))
+  }
+}
+
+function toggleSelect(id) {
+  const s = new Set(selectedIds.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  selectedIds.value = s
+}
+
+async function bulkDelete() {
+  if (selectedIds.value.size === 0) return
+  if (!confirm(`确定要删除选中的 ${selectedIds.value.size} 篇文章吗？此操作不可恢复。`)) return
+  try {
+    const res = await fetch('/api/posts/bulk-delete', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ ids: Array.from(selectedIds.value) })
+    })
+    if (res.ok) {
+      selectedIds.value = new Set()
+      fetchPosts()
+    } else {
+      const data = await res.json()
+      alert(data.error || '批量删除失败')
+    }
+  } catch (e) { alert('网络错误') }
+}
+
 // 添加用户相关
 const newUsername = ref('')
 const newPassword = ref('')
@@ -280,17 +318,37 @@ onMounted(() => {
       <div v-if="activeTab === 'posts' && isAdmin">
         <div class="header-actions">
           <h2>文章管理</h2>
-          <RouterLink to="/write" class="btn btn-primary">新建</RouterLink>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <RouterLink to="/write" class="btn btn-primary btn-sm">新建</RouterLink>
+          </div>
         </div>
+
+        <!-- 批量操作工具栏 -->
+        <div v-if="selectedIds.size > 0" class="batch-toolbar glass-inner">
+          <span>已选择 <strong>{{ selectedIds.size }}</strong> 篇</span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-ghost btn-sm" @click="toggleSelectAll">{{ isAllSelected ? '取消全选' : '全选' }}</button>
+            <button class="btn btn-danger btn-sm" @click="bulkDelete">批量删除</button>
+          </div>
+        </div>
+
         <div v-if="isLoading" class="loading-text">加载中...</div>
 
         <!-- 桌面端表格 -->
         <table v-else-if="posts.length" class="data-table desktop-only">
           <thead>
-            <tr><th>ID</th><th>标题</th><th>作者</th><th>日期</th><th>操作</th></tr>
+            <tr>
+              <th style="width: 36px;">
+                <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" class="check-input" />
+              </th>
+              <th>ID</th><th>标题</th><th>作者</th><th>日期</th><th>操作</th>
+            </tr>
           </thead>
           <tbody>
             <tr v-for="p in posts" :key="p.id">
+              <td>
+                <input type="checkbox" :checked="selectedIds.has(p.id)" @change="toggleSelect(p.id)" class="check-input" />
+              </td>
               <td>{{ p.id }}</td>
               <td><RouterLink :to="'/post/' + p.id">{{ p.title }}</RouterLink></td>
               <td>{{ p.username }}</td>
@@ -302,9 +360,12 @@ onMounted(() => {
 
         <!-- 移动端卡片 -->
         <div v-else-if="posts.length" class="mobile-only">
-          <div v-for="p in posts" :key="p.id" class="mobile-card">
+          <div v-for="p in posts" :key="p.id" class="mobile-card" :class="{ selected: selectedIds.has(p.id) }">
             <div class="mobile-card-header">
-              <RouterLink :to="'/post/' + p.id" class="mobile-card-title">{{ p.title }}</RouterLink>
+              <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                <input type="checkbox" :checked="selectedIds.has(p.id)" @change="toggleSelect(p.id)" class="check-input" />
+                <RouterLink :to="'/post/' + p.id" class="mobile-card-title">{{ p.title }}</RouterLink>
+              </div>
               <button class="btn-danger-sm" @click="deletePost(p.id)">删除</button>
             </div>
             <div class="mobile-card-meta">
@@ -597,6 +658,40 @@ h2 { margin-top: 0; }
 }
 
 .btn-danger-sm:hover { background: rgba(239, 68, 68, 0.3); }
+
+/* ===== 批量操作 ===== */
+.batch-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+.check-input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.mobile-card.selected {
+  background: rgba(14, 165, 233, 0.06);
+  border-left: 3px solid var(--primary);
+}
 
 .role-badge {
   background: rgba(14, 165, 233, 0.15); color: var(--primary);
