@@ -351,7 +351,10 @@ export class Database {
             ));
         }
         for (const b of batch) {
-            try { await b.run(); } catch (e) { /* 忽略重复 */ }
+            try { await b.run(); } catch (e) {
+                // 仅忽略 UNIQUE 约束冲突（重复源），其他错误抛出
+                if (!e.message?.includes('UNIQUE')) throw e
+            }
         }
         return batch.length;
     }

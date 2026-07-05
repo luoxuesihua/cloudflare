@@ -155,10 +155,11 @@ sources.post('/sync-all', async (c) => {
 
     // 初始化状态
     const taskId = crypto.randomUUID()
+    const startedAt = new Date().toISOString()  // 保存原始时间，供完成时复用
     await c.env.suyuankv.put(runningKey, JSON.stringify({
         taskId,
         state: 'running',
-        startedAt: new Date().toISOString(),
+        startedAt,
         processed: 0,
         total: 0,
         collected: 0,
@@ -194,7 +195,8 @@ sources.post('/sync-all', async (c) => {
             await c.env.suyuankv.put(runningKey, JSON.stringify({
                 taskId,
                 state: 'done',
-                startedAt: new Date().toISOString(), // 这里拿不到原始 startedAt，用现有数据
+                startedAt,
+                finishedAt: new Date().toISOString(),
                 processed: parsedSources.length,
                 total: parsedSources.length,
                 collected: result.totalCollected,

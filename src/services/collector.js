@@ -36,7 +36,7 @@ const FEEDS_GENERAL = [
     desc: '开源技术社区'
   },
   {
-    url: 'http://feed.cnblogs.com/blog/picked/rss',
+    url: 'https://feed.cnblogs.com/blog/picked/rss',
     name: '博客园', category: 'general', hotScore: 70, lang: 'zh',
     desc: '开发者社区精华'
   },
@@ -460,10 +460,10 @@ function extractSummary(text, title) {
 
 async function fetchWeiboHot(env) {
   try {
-    const resp = await fetch('https://weibo.com/ajax/side/hotSearch', {
+    const resp = await fetchWithTimeout('https://weibo.com/ajax/side/hotSearch', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0', 'Referer': 'https://weibo.com', 'Cookie': 'SUB=_2AkMR' },
       cf: { cacheTtl: 600 }
-    });
+    }, 10000);
     if (!resp.ok) return [];
     const data = await resp.json();
     const allItems = data?.data?.realtime || [];
@@ -493,10 +493,10 @@ async function fetchWeiboHot(env) {
 
 async function fetchZhihuHot(env) {
   try {
-    const resp = await fetch('https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=20', {
+    const resp = await fetchWithTimeout('https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=20', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       cf: { cacheTtl: 600 }
-    });
+    }, 10000);
     if (!resp.ok) return [];
     const data = await resp.json();
     const items = (data?.data || []).slice(0, 20);
@@ -514,10 +514,10 @@ async function fetchZhihuHot(env) {
 
 async function fetchBaiduHot(env) {
   try {
-    const resp = await fetch('https://top.baidu.com/board?tab=realtime', {
+    const resp = await fetchWithTimeout('https://top.baidu.com/board?tab=realtime', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       cf: { cacheTtl: 600 }
-    });
+    }, 10000);
     if (!resp.ok) return [];
     const html = await resp.text();
     const items = [];
@@ -678,7 +678,6 @@ export async function collectNews(env, onNewPost) {
   // 从数据库加载动态源并合并（同名源以数据库配置覆盖硬编码）
   try {
     const dynamicSources = await db.findActiveSources();
-    const dynamicFeedNames = new Map();
     for (const ds of dynamicSources) {
       const feed = {
         url: ds.url,

@@ -2,6 +2,7 @@
  * AI 摘要服务
  * 使用 Cloudflare Workers AI 生成文章摘要和要点提炼
  */
+import { Database } from '../db.js';
 
 /**
  * 将 Markdown 内容清理为适合 AI 处理的纯文本
@@ -124,7 +125,6 @@ export async function asyncAISummarize(env, postId, title, content) {
   try {
     const summary = await generateAISummary(env, title, content);
     if (summary) {
-      const { Database } = await import('../db.js');
       const db = new Database(env);
       await db.updatePostAISummary(postId, summary);
       console.log(`AI 摘要生成成功: post#${postId}`);
