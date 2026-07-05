@@ -222,6 +222,8 @@ const ALL_FEEDS = [
   ...FEEDS_BIZ,
 ];
 
+export { ALL_FEEDS, CATEGORIES };
+
 // ==================== 热搜榜单抓取 ====================
 
 /**

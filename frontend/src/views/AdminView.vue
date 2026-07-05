@@ -103,7 +103,7 @@ const editMsg = ref('')
 // ========== 源管理 ==========
 const sources = ref([])
 const sourcesLoading = ref(false)
-const sourceEditing = ref(null)
+const sourceEditing = ref(undefined)   // undefined=关闭, {}=新增, {id:N}=编辑
 const sourceForm = ref({
   url: '', name: '', category: 'general', hotScore: 60, lang: 'zh',
   description: '', urlBackup: [], isActive: true, sortOrder: 0
@@ -315,7 +315,7 @@ function getCategoryName(catId) {
 }
 
 function openAddSource() {
-  sourceEditing.value = null
+  sourceEditing.value = {}
   sourceForm.value = {
     url: '', name: '', category: 'general', hotScore: 60, lang: 'zh',
     description: '', urlBackup: [], isActive: true, sortOrder: 0
@@ -342,8 +342,7 @@ function openEditSource(s) {
 }
 
 function closeSourceForm() {
-  sourceEditing.value = null
-  sourceEditing.value = undefined // 关闭弹窗
+  sourceEditing.value = undefined
   sourceFormMsg.value = ''
 }
 

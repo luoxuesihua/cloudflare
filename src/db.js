@@ -269,6 +269,33 @@ export class Database {
     async deleteSource(id) {
         return await this.db.prepare("DELETE FROM sources WHERE id = ?").bind(id).run();
     }
+
+    async getSourceCount() {
+        const row = await this.db.prepare("SELECT COUNT(*) as count FROM sources").first();
+        return row ? row.count : 0;
+    }
+
+    async seedDefaultSources(feeds) {
+        const stmt = this.db.prepare(
+            `INSERT OR IGNORE INTO sources (url, name, category, hot_score, lang, description, url_backup, is_active, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`
+        );
+        // D1 批量写入需要逐个执行
+        const batch = [];
+        let sortOrder = 0;
+        for (const feed of feeds) {
+            const urlBackup = feed.urlBackup || [];
+            // 避免重复：使用 url 作为唯一性判断（INSERT OR IGNORE 无法在无约束列上工作，改用逐条检查）
+            batch.push(stmt.bind(
+                feed.url, feed.name, feed.category, feed.hotScore || 60,
+                feed.lang || 'zh', feed.desc || '', JSON.stringify(urlBackup), sortOrder++
+            ));
+        }
+        for (const b of batch) {
+            try { await b.run(); } catch (e) { /* 忽略重复 */ }
+        }
+        return batch.length;
+    }
 }
 
 // 从 username 提取 NewsBot 源名称

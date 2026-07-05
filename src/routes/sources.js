@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
-import { collectSingleSource, collectAllDynamicSources } from '../services/collector.js'
+import { collectSingleSource, collectAllDynamicSources, ALL_FEEDS } from '../services/collector.js'
 
 const sources = new Hono()
 
@@ -15,12 +15,17 @@ async function getUser(c) {
     return userStr ? JSON.parse(userStr) : null;
 }
 
-// ========== 获取所有源 ==========
+// ========== 获取所有源（首次自动种子化预设源） ==========
 sources.get('/', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
 
     const db = getDb(c)
+    // 首次访问时自动将硬编码的预设源导入数据库
+    const count = await db.getSourceCount()
+    if (count === 0) {
+        await db.seedDefaultSources(ALL_FEEDS)
+    }
     const list = await db.findAllSources()
     // 解析 url_backup JSON
     const parsed = list.map(s => ({
