@@ -27,9 +27,6 @@ const categories = [
     { id: 'biz', name: '财经商业', icon: '📈', color: '#EF4444' }
 ]
 
-let countdown = ref(0)
-let timer = null
-
 function toggleInterest(catId) {
     const idx = selectedInterests.value.indexOf(catId)
     if (idx > -1) {

@@ -1,0 +1,4 @@
+Contact: mailto:security@suyuank.top
+Preferred-Languages: zh, en
+Canonical: https://m.suyuank.top/.well-known/security.txt
+Expires: 2027-07-05T00:00:00Z

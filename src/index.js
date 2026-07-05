@@ -4,7 +4,6 @@
 
 
 import { Hono } from 'hono'
-import { cors } from 'hono/cors'
 import auth from './routes/auth'
 import posts from './routes/posts'
 import sources from './routes/sources'
@@ -14,6 +13,90 @@ import { asyncAISummarize } from './services/summarizer.js'
 
 
 const app = new Hono()
+
+const DEFAULT_ALLOWED_ORIGINS = [
+    'https://m.suyuank.top',
+    'https://suyuank.top',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+]
+
+const API_CORS_METHODS = 'GET,HEAD,POST,PUT,DELETE,OPTIONS'
+const API_CORS_HEADERS = 'Authorization,Content-Type,X-CSRF-Token'
+const CSP = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "img-src 'self' data:",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+    "connect-src 'self'",
+    'upgrade-insecure-requests'
+].join('; ')
+
+function allowedOrigins(env) {
+    const configured = env?.CORS_ORIGINS
+        ?.split(',')
+        .map(origin => origin.trim())
+        .filter(Boolean)
+
+    return configured?.length ? configured : DEFAULT_ALLOWED_ORIGINS
+}
+
+function applySecurityHeaders(headers) {
+    headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    headers.set('Content-Security-Policy', CSP)
+    headers.set('X-Frame-Options', 'DENY')
+    headers.set('X-Content-Type-Options', 'nosniff')
+    headers.set('Referrer-Policy', 'same-origin')
+    headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
+}
+
+function isAllowedOrigin(c, origin) {
+    return origin && allowedOrigins(c.env).includes(origin)
+}
+
+function applyApiCors(c) {
+    const origin = c.req.header('Origin')
+
+    c.header('Vary', 'Origin')
+    if (!isAllowedOrigin(c, origin)) return
+
+    c.header('Access-Control-Allow-Origin', origin)
+    c.header('Access-Control-Allow-Methods', API_CORS_METHODS)
+    c.header('Access-Control-Allow-Headers', API_CORS_HEADERS)
+    c.header('Access-Control-Max-Age', '86400')
+}
+
+function isSpaRoute(pathname) {
+    return pathname === '/'
+        || pathname === '/login'
+        || pathname === '/register'
+        || pathname === '/write'
+        || pathname === '/admin'
+        || /^\/post\/[^/]+\/?$/.test(pathname)
+}
+
+function isStaticAssetPath(pathname) {
+    return pathname.startsWith('/assets/')
+        || pathname.startsWith('/.well-known/')
+        || pathname === '/robots.txt'
+        || pathname === '/security.txt'
+        || pathname === '/favicon.svg'
+        || /\.[a-z0-9]{1,8}$/i.test(pathname)
+}
+
+function notFound() {
+    const response = new Response('Not Found', {
+        status: 404,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    })
+    applySecurityHeaders(response.headers)
+    return response
+}
 
 // Rate Limit 中间件：基于 KV 的滑动窗口限流（简化计数器，减少竞态窗口）
 async function rateLimit(c, next) {
@@ -115,7 +198,24 @@ app.get('/api/csrf-token', async (c) => {
 })
 
 // Middleware
-app.use('/*', cors())
+app.use('*', async (c, next) => {
+    await next()
+    applySecurityHeaders(c.res.headers)
+})
+
+app.use('/api/*', async (c, next) => {
+    applyApiCors(c)
+
+    if (c.req.method.toUpperCase() === 'OPTIONS') {
+        const origin = c.req.header('Origin')
+        return isAllowedOrigin(c, origin)
+            ? c.body(null, 204)
+            : c.json({ error: 'CORS origin not allowed' }, 403)
+    }
+
+    await next()
+})
+
 app.use('*', rateLimit)
 app.use('*', csrfProtection)  // CSRF 保护
 app.use('*', async (c, next) => {
@@ -131,11 +231,31 @@ app.route('/api/sources', sources)
 
 // 所有非 API 请求交给前端静态资源处理 (Vue SPA)
 app.all('*', async (c) => {
-  return c.env.ASSETS.fetch(c.req.raw)
+  const url = new URL(c.req.url)
+
+  if (!isSpaRoute(url.pathname) && !isStaticAssetPath(url.pathname)) {
+    return notFound()
+  }
+
+  const response = await c.env.ASSETS.fetch(c.req.raw)
+  const contentType = response.headers.get('Content-Type') || ''
+
+  if (isStaticAssetPath(url.pathname) && contentType.includes('text/html')) {
+    return notFound()
+  }
+
+  const secured = new Response(response.body, response)
+  applySecurityHeaders(secured.headers)
+  return secured
 })
 
 export default {
-  fetch: app.fetch,
+  async fetch(request, env, ctx) {
+    const response = await app.fetch(request, env, ctx)
+    const secured = new Response(response.body, response)
+    applySecurityHeaders(secured.headers)
+    return secured
+  },
   async scheduled(event, env, ctx) {
     // 根据 cron 表达式区分任务类型
     // RSS 新闻采集：每 4 小时
