@@ -1,5 +1,5 @@
 /**
- * 万象新闻采集引擎 (Panorama News Collector)
+ * 万象资讯采集引擎 (Panorama News Collector)
  * 
  * 参考 TrendRadar (54K★) 多平台聚合 + NewsNow (4.5K★) 实时新闻理念
  * 扩展至 40+ 源，覆盖 6 大分类：综合、AI、编程、运维、产品、财经
@@ -381,7 +381,7 @@ function formatArticle({ title, body, link, sourceName, sourceDesc, hotScore }) 
     `**原文链接**：[点击查看](${link})`,
     hotScore ? `**热度**：${'★'.repeat(Math.min(5, Math.ceil(hotScore / 20)))} (${hotScore}/100)` : '',
     '',
-    '*本文由 万象新闻采集引擎 自动抓取*'
+    '*本文由 万象资讯采集引擎 自动抓取*'
   ].filter(Boolean).join('\n');
 }
 
