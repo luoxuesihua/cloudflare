@@ -138,12 +138,13 @@ export class Database {
                 `WHEN category = ? THEN 0`
             ).join(' ')
             
-            sql += ` ORDER BY (CASE ${interestCases} ELSE 1 END), ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}`
+            sql += ` ORDER BY (CASE ${interestCases} ELSE 1 END), ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}, created_at DESC`
             // 将 interests 绑定参数加入
             bindings.push(...userInterests)
             finalOrderSql = sql
         } else {
-            sql += ` ORDER BY ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}`
+            const secondarySort = sortCol === 'hot_score' ? ', created_at DESC' : ''
+            sql += ` ORDER BY ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}${secondarySort}`
             finalOrderSql = sql
         }
 

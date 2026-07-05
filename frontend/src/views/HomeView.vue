@@ -14,7 +14,7 @@ const scrollContainer = ref(null)
 // 当前筛选状态
 const currentCategory = ref(route.query.category || '')
 const currentSource = ref('')
-const sortMode = ref('hot_score') // hot_score | created_at
+const sortMode = ref('created_at') // hot_score | created_at
 const currentTag = ref(route.query.tag || '')
 const searchKeyword = ref('')
 
@@ -132,7 +132,7 @@ function clearAllFilters() {
   currentSource.value = ''
   currentTag.value = ''
   searchKeyword.value = ''
-  sortMode.value = 'hot_score'
+  sortMode.value = 'created_at'
   posts.value = []
   hasMore.value = true
   router.replace({ query: {} })
