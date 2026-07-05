@@ -17,6 +17,23 @@ const posts = ref([])
 const users = ref([])
 const isLoading = ref(false)
 
+// 来源筛选
+const sourceFilter = ref('')
+const SOURCE_LIST = [
+  '微博热搜', '知乎热榜', '百度热搜',
+  '机器之心', '量子位', '36氪 AI', 'HuggingFace 日报', '机器之心精选',
+  '掘金前端', '掘金后端', 'V2EX 热门', 'GitHub 趋势', '腾讯云社区', 'HelloGitHub',
+  'Solidot', '阮一峰', '开源中国', '博客园', '思否', 'InfoQ', '掘金热榜',
+  '虎嗅网', '爱范儿', 'IT之家', '雷锋网', '品玩',
+  '美团技术', 'K8s 博客',
+  '少数派', '人人都是产品经理', '优设网',
+  '财联社电报', '华尔街见闻', '36氪创投'
+]
+
+const CATEGORY_LABELS = {
+  general: '综合', ai: 'AI前沿', dev: '编程', ops: '运维', product: '产品', biz: '财经'
+}
+
 // 批量选择
 const selectedIds = ref(new Set())
 const isAllSelected = computed(() => posts.value.length > 0 && selectedIds.value.size === posts.value.length)
@@ -147,12 +164,22 @@ const menuItems = computed(() => {
 
 async function fetchPosts() {
   isLoading.value = true
+  selectedIds.value = new Set()
   try {
-    const res = await fetch('/api/posts')
+    let url = '/api/posts?limit=500'
+    if (sourceFilter.value) url += '&source=' + encodeURIComponent(sourceFilter.value)
+    const res = await fetch(url)
     const data = await res.json()
     posts.value = Array.isArray(data) ? data : (data.posts || [])
   } catch (e) { console.error(e) }
   finally { isLoading.value = false }
+}
+
+function getSourceName(p) {
+  if (p.source_name) return p.source_name
+  // 从 username 提取: "NewsBot (xxx)" 或 "热搜Bot (xxx)"
+  const m = (p.username || '').match(/^(?:NewsBot|热搜Bot)\s*\((.+)\)$/)
+  return m ? m[1] : p.username || ''
 }
 
 async function fetchUsers() {
@@ -319,6 +346,10 @@ onMounted(() => {
         <div class="header-actions">
           <h2>文章管理</h2>
           <div style="display: flex; gap: 10px; align-items: center;">
+            <select v-model="sourceFilter" @change="fetchPosts" class="filter-select">
+              <option value="">全部来源</option>
+              <option v-for="s in SOURCE_LIST" :key="s" :value="s">{{ s }}</option>
+            </select>
             <RouterLink to="/write" class="btn btn-primary btn-sm">新建</RouterLink>
           </div>
         </div>
@@ -341,7 +372,7 @@ onMounted(() => {
               <th style="width: 36px;">
                 <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" class="check-input" />
               </th>
-              <th>ID</th><th>标题</th><th>作者</th><th>日期</th><th>操作</th>
+              <th>分类</th><th>来源</th><th>标题</th><th>日期</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -349,9 +380,9 @@ onMounted(() => {
               <td>
                 <input type="checkbox" :checked="selectedIds.has(p.id)" @change="toggleSelect(p.id)" class="check-input" />
               </td>
-              <td>{{ p.id }}</td>
+              <td><span class="cat-tag">{{ CATEGORY_LABELS[p.category] || p.category || '综合' }}</span></td>
+              <td><span class="source-tag">{{ getSourceName(p) }}</span></td>
               <td><RouterLink :to="'/post/' + p.id">{{ p.title }}</RouterLink></td>
-              <td>{{ p.username }}</td>
               <td>{{ new Date(p.created_at).toLocaleDateString('zh-CN') }}</td>
               <td><button class="btn-danger-sm" @click="deletePost(p.id)">删除</button></td>
             </tr>
@@ -369,7 +400,8 @@ onMounted(() => {
               <button class="btn-danger-sm" @click="deletePost(p.id)">删除</button>
             </div>
             <div class="mobile-card-meta">
-              <span>@{{ p.username }}</span>
+              <span class="cat-tag">{{ CATEGORY_LABELS[p.category] || p.category || '综合' }}</span>
+              <span class="source-tag">{{ getSourceName(p) }}</span>
               <span>{{ new Date(p.created_at).toLocaleDateString('zh-CN') }}</span>
             </div>
           </div>
@@ -691,6 +723,43 @@ h2 { margin-top: 0; }
 .mobile-card.selected {
   background: rgba(14, 165, 233, 0.06);
   border-left: 3px solid var(--primary);
+}
+
+/* ===== 筛选下拉 ===== */
+.filter-select {
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  cursor: pointer;
+  max-width: 140px;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* ===== 标签 ===== */
+.cat-tag, .source-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.cat-tag {
+  background: rgba(14, 165, 233, 0.12);
+  color: var(--primary);
+}
+
+.source-tag {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
 }
 
 .role-badge {
