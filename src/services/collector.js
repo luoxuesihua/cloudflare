@@ -252,6 +252,55 @@ const HOT_SEARCH_SOURCES = [
 
 // ==================== 工具函数 ====================
 
+/**
+ * 带超时的 fetch 封装（防止单个源卡死阻塞全部采集）
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+        return await fetch(url, { ...options, signal: controller.signal })
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
+/**
+ * 解析 RSS/Atom XML 为 items 数组（公共提取函数，消除 collectNews 和 collectSingleSource 的重复）
+ */
+function parseRSSItems(xmlText) {
+    const items = []
+    const itemRegex = /<(item|entry)>([\s\S]*?)<\/\1>/g
+    let match
+    while ((match = itemRegex.exec(xmlText)) !== null) items.push(match[2])
+    return items
+}
+
+/**
+ * 从 item content 中提取 title, link, description（公共提取函数）
+ */
+function extractItemFields(itemContent) {
+    const titleMatch = itemContent.match(/<title(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)
+    const title = titleMatch ? cleanPlainText(titleMatch[1]) : ''
+    if (!title) return null
+
+    let link = ''
+    const rssLinkM = itemContent.match(/<link(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)
+    if (rssLinkM && rssLinkM[1].trim()) {
+        link = rssLinkM[1].trim()
+    } else {
+        const atomLinkM = itemContent.match(/<link\s+[^>]*href=["']([^"']+)["']/i)
+        if (atomLinkM) link = atomLinkM[1].trim()
+    }
+    if (!link) return null
+
+    let description = ''
+    const descMatch = itemContent.match(/<(content:encoded|content|description|summary)(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/i)
+    if (descMatch) description = descMatch[2].trim()
+
+    return { title, link, description }
+}
+
 function decodeHtmlEntities(text) {
   if (!text) return '';
   return text
@@ -524,7 +573,7 @@ export async function collectSingleSource(env, feed) {
 
     for (const url of urlsToTry) {
         try {
-            response = await fetch(url, {
+            response = await fetchWithTimeout(url, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 PanoramaCollector/2.0',
                     'Accept': 'application/xml, text/xml, application/json, */*'
@@ -541,31 +590,13 @@ export async function collectSingleSource(env, feed) {
     }
 
     const xmlText = await response.text();
-    const items = [];
-    const itemRegex = /<(item|entry)>([\s\S]*?)<\/\1>/g;
-    let match;
-    while ((match = itemRegex.exec(xmlText)) !== null) items.push(match[2]);
-
+    const items = parseRSSItems(xmlText);
     log.push(`  · 解析 ${items.length} 条`);
 
     for (const itemContent of items) {
-        const titleMatch = itemContent.match(/<title(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
-        const title = titleMatch ? cleanPlainText(titleMatch[1]) : '';
-        if (!title) continue;
-
-        let link = '';
-        const rssLinkM = itemContent.match(/<link(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i);
-        if (rssLinkM && rssLinkM[1].trim()) {
-            link = rssLinkM[1].trim();
-        } else {
-            const atomLinkM = itemContent.match(/<link\s+[^>]*href=["']([^"']+)["']/i);
-            if (atomLinkM) link = atomLinkM[1].trim();
-        }
-        if (!link) continue;
-
-        let description = '';
-        const descMatch = itemContent.match(/<(content:encoded|content|description|summary)(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/i);
-        if (descMatch) description = descMatch[2].trim();
+        const fields = extractItemFields(itemContent);
+        if (!fields) continue;
+        const { title, link, description } = fields;
 
         const markdownDesc = htmlToMarkdown(description);
 
@@ -678,7 +709,7 @@ export async function collectNews(env, onNewPost) {
 
       for (const url of urlsToTry) {
         try {
-          response = await fetch(url, {
+          response = await fetchWithTimeout(url, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 PanoramaCollector/2.0',
               'Accept': 'application/xml, text/xml, application/json, */*'
@@ -695,36 +726,14 @@ export async function collectNews(env, onNewPost) {
       }
 
       const xmlText = await response.text();
-      // 解析 RSS/Atom items
-      const items = [];
-      const itemRegex = /<(item|entry)>([\s\S]*?)<\/\1>/g;
-      let match;
-      while ((match = itemRegex.exec(xmlText)) !== null) items.push(match[2]);
-
+      const items = parseRSSItems(xmlText);
       log.push(`  · 解析 ${items.length} 条`);
 
       let feedCount = 0;
       for (const itemContent of items) {
-        // 提取标题
-        const titleMatch = itemContent.match(/<title(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
-        const title = titleMatch ? cleanPlainText(titleMatch[1]) : '';
-        if (!title) continue;
-
-        // 提取链接
-        let link = '';
-        const rssLinkM = itemContent.match(/<link(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i);
-        if (rssLinkM && rssLinkM[1].trim()) {
-          link = rssLinkM[1].trim();
-        } else {
-          const atomLinkM = itemContent.match(/<link\s+[^>]*href=["']([^"']+)["']/i);
-          if (atomLinkM) link = atomLinkM[1].trim();
-        }
-        if (!link) continue;
-
-        // 提取内容
-        let description = '';
-        const descMatch = itemContent.match(/<(content:encoded|content|description|summary)(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/i);
-        if (descMatch) description = descMatch[2].trim();
+        const fields = extractItemFields(itemContent);
+        if (!fields) continue;
+        const { title, link, description } = fields;
 
         const markdownDesc = htmlToMarkdown(description);
         

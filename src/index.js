@@ -13,7 +13,7 @@ import { asyncAISummarize } from './services/summarizer.js'
 
 const app = new Hono()
 
-// Rate Limit 中间件：基于 KV 的滑动窗口限流
+// Rate Limit 中间件：基于 KV 的滑动窗口限流（简化计数器，减少竞态窗口）
 async function rateLimit(c, next) {
     const path = new URL(c.req.url).pathname
     // 仅对敏感接口限流
@@ -24,21 +24,18 @@ async function rateLimit(c, next) {
 
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
     const key = `rate_limit:${path}:${ip}`
-    const now = Date.now()
-    const windowMs = 60_000   // 1 分钟窗口
     const maxReq = path.includes('send-code') ? 1 : 5  // 发送验证码 1 次/分钟，登录 5 次/分钟
 
     const record = await c.env.suyuankv.get(key)
-    const timestamps = record ? JSON.parse(record).filter(t => now - t < windowMs) : []
+    const count = record ? parseInt(record, 10) : 0
 
-    if (timestamps.length >= maxReq) {
-        const retryAfter = Math.ceil((timestamps[0] + windowMs - now) / 1000)
-        c.header('Retry-After', String(retryAfter))
-        return c.json({ error: '请求过于频繁，请稍后再试', retry_after: retryAfter }, 429)
+    if (count >= maxReq) {
+        c.header('Retry-After', '60')
+        return c.json({ error: '请求过于频繁，请稍后再试', retry_after: 60 }, 429)
     }
 
-    timestamps.push(now)
-    await c.env.suyuankv.put(key, JSON.stringify(timestamps), { expirationTtl: 120 })
+    // 计数器 + 60s TTL 作为滑动窗口（读-写之间存在极小竞态窗口，最多多放行 1 个请求）
+    await c.env.suyuankv.put(key, String(count + 1), { expirationTtl: 60 })
 
     return await next()
 }

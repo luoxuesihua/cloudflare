@@ -108,13 +108,19 @@ export class Database {
             const s = `%${source}%`
             bindings.push(s, s)
         }
+        // 标签筛选也放进 SQL，保证 total 计数准确
+        if (tag) {
+            sql += " AND tags LIKE ?"
+            bindings.push(`%${tag}%`)
+        }
 
         // 排序
         const sortCol = sortBy === 'hot_score' ? 'hot_score' : 'created_at'
         sql += ` ORDER BY ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}`
 
-        // 先获取总数
-        const countSql = sql.replace(/SELECT .*? FROM/, 'SELECT COUNT(*) as cnt FROM')
+        // 更安全的 COUNT 构建：用 indexOf 定位 FROM 起始位置
+        const fromIdx = sql.indexOf(' FROM ')
+        const countSql = 'SELECT COUNT(*) as cnt' + sql.substring(fromIdx)
         const { results: countResults } = await this.db.prepare(countSql).bind(...bindings).all()
         const total = countResults?.[0]?.cnt || 0
 
@@ -124,13 +130,7 @@ export class Database {
 
         const { results } = await this.db.prepare(sql).bind(...bindings).all()
 
-        // 标签过滤（内存过滤，因为 tags 是逗号分隔文本）
-        let filtered = results || []
-        if (tag) {
-            filtered = filtered.filter(n => (n.tags || '').split(',').map(t => t.trim()).includes(tag))
-        }
-
-        return { posts: filtered, total };
+        return { posts: results || [], total };
     }
 
     async findPostById(id) {
@@ -192,6 +192,10 @@ export class Database {
             "SELECT id, post_id, user_id, username, content, created_at FROM comments WHERE post_id = ? ORDER BY created_at ASC"
         ).bind(postId).all();
         return results || [];
+    }
+
+    async findCommentById(id) {
+        return await this.db.prepare("SELECT * FROM comments WHERE id = ?").bind(id).first();
     }
 
     async createComment(postId, userId, username, content) {

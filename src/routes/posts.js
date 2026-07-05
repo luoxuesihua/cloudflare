@@ -108,22 +108,22 @@ posts.post('/bulk-delete', async (c) => {
     return c.json({ success: true, deleted: ids.length })
 })
 
-// 手动采集 RSS 新闻（仅限管理员）
+// 手动采集 RSS 新闻（后台异步执行，立即返回）
 posts.post('/collect', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
 
-    const result = await collectNews(c.env)
-    return c.json(result)
+    c.executionCtx.waitUntil(collectNews(c.env))
+    return c.json({ success: true, message: 'RSS 采集任务已启动，将在后台执行' })
 })
 
-// 手动采集热搜（仅限管理员）
+// 手动采集热搜（后台异步执行，立即返回）
 posts.post('/collect-hot', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
 
-    const result = await collectHotSearch(c.env)
-    return c.json(result)
+    c.executionCtx.waitUntil(collectHotSearch(c.env))
+    return c.json({ success: true, message: '热搜采集任务已启动，将在后台执行' })
 })
 
 // 为指定文章生成 AI 摘要 + 要点（仅限管理员）
@@ -195,14 +195,22 @@ posts.post('/:id/comments', async (c) => {
     }, 201)
 })
 
-// 删除评论（评论作者或管理员）
+// 删除评论（仅评论作者或管理员可删）
 posts.delete('/:id/comments/:commentId', async (c) => {
     const user = await getUser(c)
     if (!user) return c.json({ error: '请先登录' }, 401)
 
     const db = getDb(c)
-    // 简单处理：直接删除（实际应检查是否为作者或管理员）
     const commentId = parseInt(c.req.param('commentId'))
+    
+    const comment = await db.findCommentById(commentId)
+    if (!comment) return c.json({ error: '评论不存在' }, 404)
+
+    // 仅评论作者或管理员可删除
+    if (comment.user_id !== user.id && user.role !== 'admin') {
+        return c.json({ error: '无权限删除此评论' }, 403)
+    }
+
     await db.deleteComment(commentId)
     return c.json({ success: true })
 })

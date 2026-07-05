@@ -8,10 +8,54 @@ function getDb(c) {
     return new Database(c.env)
 }
 
+// PBKDF2 密码哈希（100000 次迭代，256 位输出，带随机盐）
 async function hashPassword(password) {
+    const encoder = new TextEncoder()
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']
+    )
+    const derived = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+        keyMaterial, 256
+    )
+    const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('')
+    const hashHex = Array.from(new Uint8Array(derived)).map(b => b.toString(16).padStart(2, '0')).join('')
+    return `pbkdf2:${saltHex}:${hashHex}`
+}
+
+// 兼容旧版 SHA-256（纯哈希，无盐）
+async function legacySHA256(password) {
     const msg = new TextEncoder().encode(password);
     const hashBuffer = await crypto.subtle.digest("SHA-256", msg);
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// 密码验证：自动检测格式，兼容旧版 SHA-256
+async function verifyPassword(password, storedHash) {
+    if (!storedHash) return false
+    // PBKDF2 格式：pbkdf2:saltHex:hashHex
+    if (storedHash.startsWith('pbkdf2:')) {
+        const [, saltHex, hashHex] = storedHash.split(':')
+        const encoder = new TextEncoder()
+        const salt = new Uint8Array(saltHex.match(/.{2}/g).map(b => parseInt(b, 16)))
+        const keyMaterial = await crypto.subtle.importKey(
+            'raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']
+        )
+        const derived = await crypto.subtle.deriveBits(
+            { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+            keyMaterial, 256
+        )
+        const newHashHex = Array.from(new Uint8Array(derived)).map(b => b.toString(16).padStart(2, '0')).join('')
+        return newHashHex === hashHex
+    }
+    // 兼容旧版纯 SHA-256
+    return await legacySHA256(password) === storedHash
+}
+
+// 判断是否为旧版 SHA-256 格式（需要升级）
+function isLegacyHash(storedHash) {
+    return storedHash && !storedHash.startsWith('pbkdf2:')
 }
 
 // 密码复杂度校验：至少8位，包含大小写字母和数字
@@ -120,11 +164,16 @@ auth.post('/login', async (c) => {
     const { username, password } = await c.req.json()
     const db = getDb(c)
 
-    const hash = await hashPassword(password)
     const user = await db.findUserByName(username)
 
-    if (!user || user.password_hash !== hash) {
+    if (!user || !await verifyPassword(password, user.password_hash)) {
         return c.json({ error: '账号或密码错误' }, 401)
+    }
+
+    // 旧版 SHA-256 密码自动升级为 PBKDF2
+    if (isLegacyHash(user.password_hash)) {
+        const newHash = await hashPassword(password)
+        await db.updatePassword(user.id, newHash)
     }
 
     const token = crypto.randomUUID()
@@ -216,9 +265,8 @@ auth.post('/password', async (c) => {
 
     const db = getDb(c)
     const fullUser = await db.findUserById(user.id)
-    const currentHash = await hashPassword(oldPassword)
 
-    if (fullUser.password_hash !== currentHash) {
+    if (!await verifyPassword(oldPassword, fullUser.password_hash)) {
         return c.json({ error: '原密码不正确' }, 400)
     }
 
