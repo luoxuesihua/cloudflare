@@ -1,6 +1,8 @@
 
 
 
+
+
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import auth from './routes/auth'
@@ -40,9 +42,82 @@ async function rateLimit(c, next) {
     return await next()
 }
 
+// ========== CSRF 保护中间件 ==========
+// 对所有非 GET/HEAD/OPTIONS 的写操作请求进行 CSRF 验证
+async function csrfProtection(c, next) {
+    const method = c.req.method.toUpperCase()
+    
+    // 只对会改变状态的请求进行验证
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+        return await next()
+    }
+
+    // 跳过 API 前缀的路径检查（只保护 /api 路径）
+    const path = new URL(c.req.url).pathname
+    if (!path.startsWith('/api/')) {
+        return await next()
+    }
+
+    // 从 Header 获取 CSRF Token
+    const csrfToken = c.req.header('X-CSRF-Token')
+    if (!csrfToken) {
+        return c.json({ error: '缺少 CSRF Token，请刷新页面重试' }, 403)
+    }
+
+    // 从 Cookie 或 Session 获取存储的 token 进行比对
+    const sessionId = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (!sessionId) {
+        // 未登录状态下的请求也需要验证（如注册、登录）
+        // 使用 IP + User-Agent 作为 session 标识符的替代
+        const ip = c.req.header('CF-Connecting-IP') || 'unknown'
+        const ua = c.req.header('User-Agent') || ''
+        const tempKey = `csrf:${Buffer.from(ip + ua.slice(0, 50)).toString('base64').slice(0, 32)}`
+        
+        const storedToken = await c.env.suyuankv.get(tempKey)
+        if (storedToken !== csrfToken) {
+            return c.json({ error: 'CSRF 验证失败，请刷新页面重试' }, 403)
+        }
+        return await next()
+    }
+
+    // 已登录用户从 KV 获取 CSRF Token
+    const storedCsrf = await c.env.suyuankv.get(`csrf:${sessionId}`)
+    if (!storedCsrf || storedCsrf !== csrfToken) {
+        return c.json({ error: 'CSRF 验证失败，请重新登录' }, 403)
+    }
+
+    return await next()
+}
+
+// 生成 CSRF Token 的接口
+app.get('/api/csrf-token', async (c) => {
+    const token = crypto.randomUUID()
+    
+    // 尝试从 Authorization 获取 session ID
+    const sessionId = c.req.header('Authorization')?.replace('Bearer ', '')
+    
+    if (sessionId) {
+        // 已登录用户：将 CSRF Token 与 session 绑定
+        await c.env.suyuankv.put(`csrf:${sessionId}`, token, { 
+            expirationTtl: 7200 // 2小时有效
+        })
+    } else {
+        // 未登录用户：使用 IP + UA 作为临时标识
+        const ip = c.req.header('CF-Connecting-IP') || 'unknown'
+        const ua = c.req.header('User-Agent') || ''
+        const tempKey = `csrf:${Buffer.from(ip + ua.slice(0, 50)).toString('base64').slice(0, 32)}`
+        await c.env.suyuankv.put(tempKey, token, { 
+            expirationTtl: 3600 // 1小时有效
+        })
+    }
+    
+    return c.json({ csrf_token: token })
+})
+
 // Middleware
 app.use('/*', cors())
 app.use('*', rateLimit)
+app.use('*', csrfProtection)  // CSRF 保护
 app.use('*', async (c, next) => {
   const db = new Database(c.env)
   await db.init()

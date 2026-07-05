@@ -3,8 +3,10 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { useAuth } from '../composables/useAuth'
 
 const route = useRoute()
+const auth = useAuth()
 const post = ref(null)
 const isLoading = ref(true)
 const error = ref('')
@@ -17,7 +19,7 @@ const commentCount = ref(0)
 const newComment = ref('')
 const isSubmittingComment = ref(false)
 
-const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+const isLoggedIn = computed(() => auth.isLoggedIn.value)
 
 // 配置 marked
 marked.setOptions({
@@ -35,6 +37,20 @@ function renderMarkdown(text) {
   })
 }
 
+// 记录阅读历史
+async function recordReadingHistory() {
+  if (!auth.isLoggedIn.value || !route.params.id) return
+  
+  try {
+    await fetch(`/api/posts/${route.params.id}/read`, {
+      method: 'POST',
+      headers: auth.getHeaders()
+    })
+  } catch (e) {
+    console.warn('记录阅读历史失败:', e)
+  }
+}
+
 onMounted(async () => {
   try {
     const res = await fetch(`/api/posts/${route.params.id}`)
@@ -42,6 +58,11 @@ onMounted(async () => {
     post.value = await res.json()
     fetchAISummary()
     fetchComments()
+    
+    // 记录阅读历史（如果用户已登录）
+    if (auth.isLoggedIn.value) {
+      recordReadingHistory()
+    }
   } catch (e) {
     error.value = e.message
   } finally {
@@ -50,14 +71,13 @@ onMounted(async () => {
 })
 
 async function fetchAISummary() {
-  const token = localStorage.getItem('token')
-  if (!token) return
+  if (!auth.isLoggedIn.value) return
 
   try {
     isLoadingAI.value = true
     const res = await fetch(`/api/posts/${route.params.id}/summarize`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: auth.getHeaders()
     })
     if (res.ok) {
       const data = await res.json()
@@ -86,17 +106,13 @@ async function fetchComments() {
 
 async function submitComment() {
   if (!newComment.value.trim() || isSubmittingComment.value) return
-  const token = localStorage.getItem('token')
-  if (!token) return
+  if (!auth.isLoggedIn.value) return
 
   isSubmittingComment.value = true
   try {
     const res = await fetch(`/api/posts/${route.params.id}/comments`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: auth.getHeaders(),
       body: JSON.stringify({ content: newComment.value.trim() })
     })
     if (res.ok) {

@@ -69,11 +69,24 @@ export class Database {
             "ALTER TABLE notes ADD COLUMN ai_summary TEXT DEFAULT ''",
             "ALTER TABLE users ADD COLUMN email TEXT",
             "ALTER TABLE users ADD COLUMN phone TEXT",
-            "ALTER TABLE comments ADD COLUMN user_id INTEGER DEFAULT 0"
+            "ALTER TABLE comments ADD COLUMN user_id INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN interests TEXT DEFAULT '[]'",
+            "ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'dark'"
         ];
         for (const sql of alterCols) {
             try { await this.db.prepare(sql).run(); } catch (e) { /* 列已存在 */ }
         }
+
+        // 阅读历史表
+        await this.db.prepare(`
+            CREATE TABLE IF NOT EXISTS reading_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                post_id INTEGER NOT NULL,
+                read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, post_id)
+            )
+        `).run();
 
         // 创建索引以优化查询性能
         const indexes = [
@@ -89,7 +102,7 @@ export class Database {
     }
 
     // ========== 文章相关 ==========
-    async findAllPosts(tag = null, category = null, source = null, keyword = null, sortBy = 'created_at', order = 'DESC', limit = 20, offset = 0) {
+    async findAllPosts(tag = null, category = null, source = null, keyword = null, sortBy = 'created_at', order = 'DESC', limit = 20, offset = 0, userInterests = []) {
         // 构建带搜索条件的 SQL 查询
         let sql = "SELECT id, title, username, tags, category, hot_score, source_name, summary, ai_summary, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes WHERE 1=1"
         const bindings = []
@@ -114,21 +127,41 @@ export class Database {
             bindings.push(`%${tag}%`)
         }
 
-        // 排序
+        // 排序（安全性：sortBy 和 order 已经在路由层通过白名单校验）
         const sortCol = sortBy === 'hot_score' ? 'hot_score' : 'created_at'
-        sql += ` ORDER BY ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}`
+        
+        // 个性化推荐：如果用户有设置兴趣标签，对匹配分类的文章加权排序
+        let finalOrderSql
+        if (userInterests && userInterests.length > 0 && sortBy === 'created_at') {
+            // 使用 CASE WHEN 为兴趣分类文章赋予更高的排序权重
+            const interestCases = userInterests.map(() => 
+                `WHEN category = ? THEN 0`
+            ).join(' ')
+            
+            sql += ` ORDER BY (CASE ${interestCases} ELSE 1 END), ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}`
+            // 将 interests 绑定参数加入
+            bindings.push(...userInterests)
+            finalOrderSql = sql
+        } else {
+            sql += ` ORDER BY ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}`
+            finalOrderSql = sql
+        }
 
         // 更安全的 COUNT 构建：用 indexOf 定位 FROM 起始位置
-        const fromIdx = sql.indexOf(' FROM ')
-        const countSql = 'SELECT COUNT(*) as cnt' + sql.substring(fromIdx)
-        const { results: countResults } = await this.db.prepare(countSql).bind(...bindings).all()
+        const fromIdx = finalOrderSql.indexOf(' FROM ')
+        const countSql = 'SELECT COUNT(*) as cnt' + finalOrderSql.substring(fromIdx)
+        // 移除 COUNT 查询中的 ORDER BY 子句（不需要且可能出错）
+        const orderIdx = countSql.indexOf(' ORDER BY')
+        const cleanCountSql = orderIdx > -1 ? countSql.substring(0, orderIdx) : countSql
+        
+        const { results: countResults } = await this.db.prepare(cleanCountSql).bind(...bindings).all()
         const total = countResults?.[0]?.cnt || 0
 
         // 分页
-        sql += " LIMIT ? OFFSET ?"
+        finalOrderSql += " LIMIT ? OFFSET ?"
         bindings.push(limit, offset)
 
-        const { results } = await this.db.prepare(sql).bind(...bindings).all()
+        const { results } = await this.db.prepare(finalOrderSql).bind(...bindings).all()
 
         return { posts: results || [], total };
     }
@@ -357,6 +390,63 @@ export class Database {
             }
         }
         return batch.length;
+    }
+
+    // ========== 阅读历史相关 ==========
+    
+    async recordReadingHistory(userId, postId) {
+        try {
+            await this.db.prepare(
+                `INSERT INTO reading_history (user_id, post_id, read_at)
+                 VALUES (?, ?, CURRENT_TIMESTAMP)
+                 ON CONFLICT(user_id, post_id) DO UPDATE SET read_at = CURRENT_TIMESTAMP`
+            ).bind(userId, postId).run();
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async getReadingHistory(userId, limit = 20, offset = 0) {
+        const { results } = await this.db.prepare(`
+            SELECT rh.id, rh.post_id, rh.read_at,
+                   n.title, n.category, n.source_name, n.summary
+            FROM reading_history rh
+            LEFT JOIN notes n ON rh.post_id = n.id
+            WHERE rh.user_id = ?
+            ORDER BY rh.read_at DESC
+            LIMIT ? OFFSET ?
+        `).bind(userId, limit, offset).all();
+        return results || [];
+    }
+
+    async getReadingHistoryCount(userId) {
+        const row = await this.db.prepare(
+            'SELECT COUNT(*) as count FROM reading_history WHERE user_id = ?'
+        ).bind(userId).first('count');
+        return row || 0;
+    }
+
+    async clearReadingHistory(userId) {
+        return await this.db.prepare(
+            'DELETE FROM reading_history WHERE user_id = ?'
+        ).bind(userId).run();
+    }
+
+    // ========== 用户兴趣/偏好 ==========
+
+    async updateUserInterests(userId, interests) {
+        return await this.db.prepare(
+            "UPDATE users SET interests = ? WHERE id = ?"
+        ).bind(JSON.stringify(interests || []), userId).run();
+    }
+
+    async updateUserTheme(userId, theme) {
+        const validThemes = ['dark', 'light', 'system'];
+        const finalTheme = validThemes.includes(theme) ? theme : 'dark';
+        return await this.db.prepare(
+            "UPDATE users SET theme = ? WHERE id = ?"
+        ).bind(finalTheme, userId).run();
     }
 }
 

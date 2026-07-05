@@ -1,12 +1,37 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { RouterView, RouterLink } from 'vue-router'
 import { useAuth } from './composables/useAuth'
 import { useRouter } from 'vue-router'
 
-const { isLoggedIn, isAdmin, user, logout } = useAuth()
+const { isLoggedIn, isAdmin, user, logout, theme, setTheme } = useAuth()
 const router = useRouter()
 const menuOpen = ref(false)
+const showThemeMenu = ref(false)
+
+// 主题选项
+const themeOptions = [
+    { value: 'dark', label: '深色', icon: '🌙' },
+    { value: 'light', label: '浅色', icon: '☀️' },
+    { value: 'system', label: '跟随系统', icon: '💻' }
+]
+
+// 当前选中的主题
+const currentThemeLabel = computed(() => {
+    const option = themeOptions.find(o => o.value === theme.value)
+    return option ? option.label : '深色'
+})
+
+const currentThemeIcon = computed(() => {
+    const option = themeOptions.find(o => o.value === theme.value)
+    return option ? option.icon : '🌙'
+})
+
+// 切换主题
+function handleSetTheme(newTheme) {
+    setTheme(newTheme)
+    showThemeMenu.value = false
+}
 
 const handleLogout = () => {
   logout()
@@ -20,7 +45,7 @@ const closeMenu = () => {
 </script>
 
 <template>
-  <div class="app-container">
+  <div class="app-container" :class="'theme-' + theme">
     <header class="main-header glass-panel">
       <div class="container header-content">
         <RouterLink to="/" class="logo" @click="closeMenu">
@@ -33,6 +58,36 @@ const closeMenu = () => {
           <span></span>
           <span></span>
         </button>
+
+        <!-- 右侧工具栏 -->
+        <div class="header-actions">
+          <!-- 主题切换按钮 -->
+          <div class="theme-switcher" ref="themeSwitcherRef">
+            <button 
+              class="theme-btn"
+              @click="showThemeMenu = !showThemeMenu"
+              :title="'当前主题：' + currentThemeLabel"
+            >
+              {{ currentThemeIcon }}
+            </button>
+            
+            <!-- 主题选择下拉菜单 -->
+            <transition name="dropdown">
+              <div v-if="showThemeMenu" class="theme-dropdown">
+                <button 
+                  v-for="option in themeOptions" 
+                  :key="option.value"
+                  class="theme-option"
+                  :class="{ active: theme === option.value }"
+                  @click="handleSetTheme(option.value)"
+                >
+                  <span class="option-icon">{{ option.icon }}</span>
+                  <span class="option-label">{{ option.label }}</span>
+                </button>
+              </div>
+            </transition>
+          </div>
+        </div>
 
         <!-- 导航 -->
         <nav :class="{ open: menuOpen }">
@@ -191,6 +246,15 @@ nav {
     display: flex;
   }
 
+  .theme-switcher {
+    position: static;
+  }
+
+  .theme-dropdown {
+    right: 10px;
+    left: auto;
+  }
+
   nav {
     position: fixed;
     top: 0;
@@ -235,5 +299,99 @@ nav {
   .main-content {
     padding-top: 20px;
   }
+}
+
+/* ===== 主题切换器 ===== */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 12px;
+}
+
+.theme-switcher {
+  position: relative;
+}
+
+.theme-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.theme-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+}
+
+.theme-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 140px;
+  background: rgba(15, 23, 42, 0.98);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.theme-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.theme-option.active {
+  background: rgba(14, 165, 233, 0.15);
+  color: var(--primary);
+}
+
+.option-icon {
+  font-size: 1rem;
+}
+
+.option-label {
+  font-weight: 500;
+}
+
+/* 下拉动画 */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: all 0.2s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.96);
 }
 </style>

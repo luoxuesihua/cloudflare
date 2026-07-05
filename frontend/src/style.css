@@ -8,4 +8,200 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* ===== 暗色主题 (默认) ===== */
+:root, .theme-dark {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-card: rgba(15, 23, 42, 0.8);
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --primary: #38bdf8;
+  --primary-hover: #7dd3fc;
+  --danger: #f87171;
+  
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+/* ===== 浅色主题 ===== */
+.theme-light {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --border-color: rgba(0, 0, 0, 0.1);
+  --primary: #0284c7;
+  --primary-hover: #0369a1;
+  --danger: #dc2626;
+  
+  background-color: #f8fafc;
+  color: #1e293b;
+}
+
+/* 浅色主题下的全局样式覆盖 */
+.theme-light body {
+  background-color: #f8fafc;
+  color: #1e293b;
+}
+
+.theme-light .glass-panel {
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.08) !important;
+}
+
+.theme-light .main-header {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-bottom-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.theme-light .logo,
+.theme-light .nav-link:not(:hover),
+.theme-light .footer-link a {
+  color: #1e293b;
+}
+
+.theme-light .nav-link:hover {
+  color: #0284c7;
+  background: rgba(14, 132, 199, 0.08);
+}
+
+.theme-light .input-field,
+.theme-light .comment-textarea,
+.theme-light .search-input,
+.theme-light .source-select {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+}
+
+.theme-light .input-field:focus,
+.theme-light .comment-textarea:focus,
+.theme-light .search-input:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 15px rgba(2, 132, 199, 0.15);
+}
+
+.theme-light .news-card {
+  background: linear-gradient(145deg, #fff, #f8fafc);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.theme-light .news-card:hover {
+  border-color: rgba(14, 132, 199, 0.25);
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.12);
+}
+
+.theme-light .card-title a {
+  color: #1e293b;
+}
+
+.theme-light .card-title a:hover {
+  color: #0284c7;
+}
+
+.theme-light .card-excerpt,
+.theme-light .comment-content,
+.theme-light .ai-summary-text,
+.theme-light .markdown-body {
+  color: #475569;
+}
+
+.theme-light .cat-tab {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: transparent;
+  color: #64748b;
+}
+
+.theme-light .cat-tab:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #1e293b;
+}
+
+.theme-light .post-content {
+  background: rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.06);
+}
+
+.theme-light .title {
+  color: #0f172a;
+}
+
+.theme-light .meta {
+  color: #94a3b8;
+}
+
+.theme-light .divider {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.theme-light .comment-item {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.theme-light .comment-login-hint {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.theme-light .theme-dropdown {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .theme-option:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.theme-light .interest-chip {
+  background: transparent;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.theme-light .interest-chip.selected {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(14, 165, 233, 0.06));
+}
+
+.theme-light .interest-name {
+  color: #475569;
+}
+
+.theme-light .interest-chip.selected .interest-name {
+  color: #1e293b;
+}
+
+.theme-light .register-card,
+.theme-light .login-card {
+  background: rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.12);
+}
+
+.theme-light .email-display {
+  background: rgba(14, 165, 233, 0.06);
+  border-color: rgba(14, 165, 233, 0.2);
+}
+
+.theme-light .main-footer {
+  border-top-color: rgba(0, 0, 0, 0.06);
+}
+
+.theme-light .hero h1,
+.theme-light .comments-title {
+  color: #0f172a;
+}
+
+.theme-light .hero-desc,
+.theme-light .subtitle,
+.theme-light .empty-state p,
+.theme-light .comment-empty {
+  color: #64748b;
 }

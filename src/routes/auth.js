@@ -354,4 +354,62 @@ auth.delete('/users/:id', async (c) => {
     return c.json({ success: true })
 })
 
+// ========== 用户偏好设置 ==========
+
+// 获取可用分类列表（用于兴趣标签选择）
+auth.get('/categories', async (c) => {
+    // 无需登录，公开接口
+    return c.json([
+        { id: 'general', name: '综合资讯', icon: 'globe' },
+        { id: 'ai', name: 'AI 前沿', icon: 'cpu' },
+        { id: 'dev', name: '编程开发', icon: 'code' },
+        { id: 'ops', name: '运维架构', icon: 'server' },
+        { id: 'product', name: '产品设计', icon: 'layout' },
+        { id: 'biz', name: '财经商业', icon: 'trending-up' }
+    ])
+})
+
+// 更新用户兴趣标签
+auth.put('/interests', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '未登录' }, 401)
+
+    const { interests } = await c.req.json()
+    
+    // 验证 interests 格式：必须是字符串数组，且值合法
+    const validCategories = ['general', 'ai', 'dev', 'ops', 'product', 'biz']
+    let finalInterests = []
+    
+    if (Array.isArray(interests)) {
+        finalInterests = interests.filter(i => 
+            typeof i === 'string' && validCategories.includes(i.trim())
+        ).map(i => i.trim())
+    }
+
+    const db = getDb(c)
+    await db.updateUserInterests(user.id, finalInterests)
+
+    // 更新 token 中的用户信息
+    const token = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (token) {
+        const userData = { ...user, interests: finalInterests }
+        await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 })
+    }
+
+    return c.json({ success: true, interests: finalInterests })
+})
+
+// 更新用户主题偏好
+auth.put('/theme', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '未登录' }, 401)
+
+    const { theme } = await c.req.json()
+    
+    const db = getDb(c)
+    await db.updateUserTheme(user.id, theme)
+
+    return c.json({ success: true, theme })
+})
+
 export default auth

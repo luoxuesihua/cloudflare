@@ -100,6 +100,27 @@ const editForm = ref({ username: '', email: '', phone: '' })
 const editLoading = ref(false)
 const editMsg = ref('')
 
+// ========== 阅读历史 ==========
+const readingHistory = ref([])
+const historyLoading = ref(false)
+const historyTotal = ref(0)
+const HISTORY_PAGE_SIZE = 20
+const historyOffset = ref(0)
+
+// ========== 兴趣标签编辑 ==========
+const interestCategories = [
+    { id: 'general', name: '综合资讯', icon: '🌐', color: '#0EA5E9' },
+    { id: 'ai', name: 'AI 前沿', icon: '🧠', color: '#8B5CF6' },
+    { id: 'dev', name: '编程开发', icon: '💻', color: '#10B981' },
+    { id: 'ops', name: '运维架构', icon: '⚙️', color: '#F59E0B' },
+    { id: 'product', name: '产品设计', icon: '🎨', color: '#EC4899' },
+    { id: 'biz', name: '财经商业', icon: '📈', color: '#EF4444' }
+]
+const isEditingInterests = ref(false)
+const selectedInterests = ref([])
+const interestLoading = ref(false)
+const interestMsg = ref('')
+
 // ========== 源管理 ==========
 const sources = ref([])
 const sourcesLoading = ref(false)
@@ -187,6 +208,7 @@ const menuItems = computed(() => {
     items.push({ key: 'adduser', label: '添加用户' })
   }
   items.push({ key: 'profile', label: '个人中心' })
+  items.push({ key: 'history', label: '阅读历史' })
   items.push({ key: 'changepwd', label: '修改密码' })
   return items
 })
@@ -542,6 +564,115 @@ function switchTab(tab) {
   if (tab === 'posts') fetchPosts()
   if (tab === 'users') fetchUsers()
   if (tab === 'sources') fetchSources()
+  if (tab === 'history') fetchReadingHistory(true)
+}
+
+// ========== 阅读历史函数 ==========
+async function fetchReadingHistory(reset = false) {
+  historyLoading.value = true
+  if (reset) {
+    readingHistory.value = []
+    historyOffset.value = 0
+  }
+  
+  try {
+    const res = await fetch(`/api/posts/history?limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset.value}`, {
+      headers: getHeaders()
+    })
+    const data = await res.json()
+    readingHistory.value = data.history || []
+    historyTotal.value = data.total || 0
+  } catch (e) {
+    console.error('获取阅读历史失败:', e)
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+async function clearHistory() {
+  if (!confirm('确定要清空所有阅读历史吗？此操作不可恢复。')) return
+  
+  try {
+    const res = await fetch('/api/posts/history', {
+      method: 'DELETE',
+      headers: getHeaders()
+    })
+    if (res.ok) {
+      readingHistory.value = []
+      historyTotal.value = 0
+    }
+  } catch (e) {
+    alert('清空失败')
+  }
+}
+
+// ========== 兴趣标签函数 ==========
+async function startEditInterests() {
+  // 获取当前用户的兴趣标签
+  selectedInterests.value = user.value?.interests ? [...user.value.interests] : []
+  isEditingInterests.value = true
+  interestMsg.value = ''
+}
+
+function cancelEditInterests() {
+  isEditingInterests.value = false
+  selectedInterests.value = []
+  interestMsg.value = ''
+}
+
+function toggleInterest(catId) {
+  const idx = selectedInterests.value.indexOf(catId)
+  if (idx > -1) {
+    selectedInterests.value.splice(idx, 1)
+  } else if (selectedInterests.value.length < 5) {
+    selectedInterests.value.push(catId)
+  }
+}
+
+async function saveInterests() {
+  interestLoading.value = true
+  interestMsg.value = ''
+  
+  try {
+    const res = await fetch('/api/auth/interests', {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ interests: selectedInterests.value })
+    })
+    
+    if (res.ok) {
+      const data = await res.json()
+      isEditingInterests.value = false
+      user.value = { ...user.value, interests: data.interests || [...selectedInterests.value] }
+      localStorage.setItem('auth_user', JSON.stringify(user.value))
+    } else {
+      interestMsg.value = '保存失败，请重试'
+    }
+  } catch (e) {
+    interestMsg.value = '网络错误'
+  } finally {
+    interestLoading.value = false
+  }
+}
+
+// 格式化时间
+function formatTime(dateStr) {
+  if (!dateStr) return ''
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diff = Math.floor((now - then) / 1000)
+  
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} 天前`
+  
+  return new Date(dateStr).toLocaleDateString('zh-CN', { 
+    month: 'short', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 onMounted(() => {
@@ -928,6 +1059,57 @@ onMounted(() => {
                 <div class="info-row"><span class="label">手机号</span><span>{{ user?.phone || '未设置' }}</span></div>
                 <div class="info-row"><span class="label">用户 ID</span><span>{{ user?.id }}</span></div>
                 <div class="info-row"><span class="label">角色</span><span class="role-badge">{{ user?.role }}</span></div>
+                
+                <!-- 兴趣标签展示/编辑 -->
+                <div class="interests-section">
+                  <div class="info-row">
+                    <span class="label">兴趣标签</span>
+                    <span>
+                      <template v-if="user?.interests && user.interests.length > 0">
+                        <span 
+                          v-for="catId in user.interests" 
+                          :key="catId"
+                          class="mini-interest-tag"
+                          :style="{ background: (interestCategories.find(c => c.id === catId) || {}).color + '20', color: (interestCategories.find(c => c.id === catId) || {}).color }"
+                        >
+                          {{ (interestCategories.find(c => c.id === catId) || {}).name || catId }}
+                        </span>
+                      </template>
+                      <span v-else class="no-interests">未设置</span>
+                      <button @click="startEditInterests" class="btn btn-ghost btn-sm" style="margin-left: 8px;">{{ isEditingInterests ? '取消' : '修改' }}</button>
+                    </span>
+                  </div>
+                  
+                  <!-- 兴趣标签编辑器 -->
+                  <div v-if="isEditingInterests" class="interest-editor">
+                    <div v-if="interestMsg" :class="['msg', interestMsg.includes('失败') || interestMsg.includes('错误') ? 'error-msg' : 'success-msg']">{{ interestMsg }}</div>
+                    
+                    <div class="interest-chips-grid">
+                      <button
+                        v-for="cat in interestCategories"
+                        :key="cat.id"
+                        type="button"
+                        class="interest-edit-chip"
+                        :class="{ selected: selectedInterests.includes(cat.id) }"
+                        :style="selectedInterests.includes(cat.id) ? { borderColor: cat.color, background: cat.color + '15' } : {}"
+                        @click="toggleInterest(cat.id)"
+                      >
+                        <span>{{ cat.icon }}</span>
+                        <span>{{ cat.name }}</span>
+                        <span v-if="selectedInterests.includes(cat.id)" class="chip-check">✓</span>
+                      </button>
+                    </div>
+                    
+                    <p class="interest-hint-text">已选 {{ selectedInterests.length }}/5 个标签</p>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 16px;">
+                      <button @click="saveInterests" class="btn btn-primary btn-sm" :disabled="interestLoading">
+                        {{ interestLoading ? '保存中...' : '保存' }}
+                      </button>
+                      <button @click="cancelEditInterests" class="btn btn-ghost btn-sm">取消</button>
+                    </div>
+                  </div>
+                </div>
             </div>
 
             <div v-else class="edit-form">
@@ -977,6 +1159,55 @@ onMounted(() => {
             <button @click="changePassword" class="btn btn-primary" :disabled="pwdLoading">
               {{ pwdLoading ? '更新中...' : '更新密码' }}
             </button>
+        </div>
+      </div>
+
+      <!-- 阅读历史 -->
+      <div v-if="activeTab === 'history'" class="profile-section">
+        <div class="header-actions">
+          <h2>阅读历史</h2>
+          <button 
+            v-if="historyTotal > 0"
+            @click="clearHistory" 
+            class="btn btn-danger btn-sm"
+          >清空历史</button>
+        </div>
+        
+        <div v-if="historyLoading && readingHistory.length === 0" class="loading-text">加载中...</div>
+        
+        <div v-else-if="readingHistory.length === 0" class="empty-text">
+          <p style="padding: 40px 0;">暂无阅读记录，去首页看看吧~</p>
+          <RouterLink to="/" class="btn btn-primary">浏览文章</RouterLink>
+        </div>
+        
+        <div v-else class="history-list glass-inner">
+          <div class="history-header-info">
+            共 <strong>{{ historyTotal }}</strong> 条阅读记录
+          </div>
+          
+          <div v-for="item in readingHistory" :key="item.id" class="history-item">
+            <RouterLink :to="'/post/' + item.post_id" class="history-item-title">
+              {{ item.title || '（文章已删除）' }}
+            </RouterLink>
+            <div class="history-item-meta">
+              <span class="history-category" v-if="item.category">
+                {{ item.category === 'general' ? '综合' : 
+                   item.category === 'ai' ? 'AI前沿' :
+                   item.category === 'dev' ? '编程开发' :
+                   item.category === 'ops' ? '运维架构' :
+                   item.category === 'product' ? '产品设计' : '财经商业' }}
+              </span>
+              <span class="history-source" v-if="item.source_name">{{ item.source_name }}</span>
+              <span class="history-time">{{ formatTime(item.read_at) }}</span>
+            </div>
+          </div>
+          
+          <!-- 加载更多 -->
+          <div v-if="readingHistory.length < historyTotal" class="load-more-btn-wrapper">
+            <button @click="fetchReadingHistory(false)" class="btn btn-ghost btn-sm" :disabled="historyLoading">
+              {{ historyLoading ? '加载中...' : '加载更多' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1373,5 +1604,197 @@ label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size:
   white-space: nowrap;
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+/* ===== 兴趣标签 ===== */
+.interests-section {
+  margin-top: 4px;
+}
+
+.mini-interest-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
+.no-interests {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.interest-editor {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.interest-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.interest-edit-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  color: var(--text-muted);
+}
+
+.interest-edit-chip:hover:not(.selected) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.interest-edit-chip.selected {
+  border-color: var(--chip-color, var(--primary));
+  background: linear-gradient(135deg, rgba(var(--chip-color-rgb, 14, 165, 233), 0.15), rgba(var(--chip-color-rgb, 14, 165, 233), 0.08));
+  color: #fff;
+}
+
+.chip-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--chip-color, var(--primary));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+.interest-hint-text {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+/* ===== 阅读历史 ===== */
+.history-list {
+  max-width: 700px;
+}
+
+.history-header-info {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.history-item {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.2s;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+  margin: 0 -24px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-item-title {
+  display: block;
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: var(--text-main);
+  text-decoration: none;
+  margin-bottom: 6px;
+  line-height: 1.4;
+  transition: color 0.2s;
+}
+
+.history-item-title:hover {
+  color: var(--primary);
+}
+
+.history-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.history-category {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--primary);
+  font-size: 0.75rem;
+}
+
+.history-source::before {
+  content: '·';
+  margin-right: 12px;
+}
+
+.history-time {
+  opacity: 0.7;
+}
+
+.load-more-btn-wrapper {
+  text-align: center;
+  padding: 20px 0 8px;
+}
+
+/* 浅色主题下的阅读历史和兴趣标签 */
+.theme-light .history-item:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.theme-light .history-item-title {
+  color: #1e293b;
+}
+
+.theme-light .history-item-title:hover {
+  color: #0284c7;
+}
+
+.theme-light .interest-edit-chip {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.theme-light .interest-editor {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+@media (max-width: 768px) {
+  .interest-chips-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .history-item:hover {
+    margin: 0 -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }
 </style>

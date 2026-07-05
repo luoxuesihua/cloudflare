@@ -1,9 +1,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
-const step = ref(1) // 1: 输入邮箱发送验证码, 2: 输入验证码+密码完成注册
+const auth = useAuth()
+const step = ref(1) // 1: 输入邮箱发送验证码, 2: 输入验证码+密码完成注册, 3: 选择兴趣标签
 const email = ref('')
 const code = ref('')
 const username = ref('')
@@ -13,6 +15,34 @@ const isLoading = ref(false)
 const isSending = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
+
+// 兴趣标签相关
+const selectedInterests = ref([])
+const categories = [
+    { id: 'general', name: '综合资讯', icon: '🌐', color: '#0EA5E9' },
+    { id: 'ai', name: 'AI 前沿', icon: '🧠', color: '#8B5CF6' },
+    { id: 'dev', name: '编程开发', icon: '💻', color: '#10B981' },
+    { id: 'ops', name: '运维架构', icon: '⚙️', color: '#F59E0B' },
+    { id: 'product', name: '产品设计', icon: '🎨', color: '#EC4899' },
+    { id: 'biz', name: '财经商业', icon: '📈', color: '#EF4444' }
+]
+
+let countdown = ref(0)
+let timer = null
+
+function toggleInterest(catId) {
+    const idx = selectedInterests.value.indexOf(catId)
+    if (idx > -1) {
+        selectedInterests.value.splice(idx, 1)
+    } else if (selectedInterests.value.length < 5) {
+        selectedInterests.value.push(catId)
+    }
+}
+
+function isInterestSelected(catId) {
+    return selectedInterests.value.includes(catId)
+}
+
 const countdown = ref(0)
 let timer = null
 
@@ -29,7 +59,7 @@ const sendCode = async () => {
   try {
     const res = await fetch('/api/auth/send-code', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: auth.getHeaders(),
       body: JSON.stringify({ email: email.value, type: 'register' })
     })
     const data = await res.json()
@@ -65,7 +95,7 @@ const resendCode = async () => {
   await sendCode()
 }
 
-// 注册
+// 注册（步骤2完成后的回调）
 const handleRegister = async () => {
   if (!code.value || !password.value) {
     errorMsg.value = '请填写验证码和密码'
@@ -78,7 +108,7 @@ const handleRegister = async () => {
   try {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: auth.getHeaders(),
       body: JSON.stringify({
         email: email.value,
         code: code.value,
@@ -90,8 +120,27 @@ const handleRegister = async () => {
     const data = await res.json()
 
     if (res.ok) {
-      alert('注册成功！请登录。')
-      router.push('/login')
+      // 注册成功，保存 token 和用户信息
+      if (data.token) {
+        auth.setAuth(data.token, { 
+          id: data.id,
+          username: data.username || username.value || email.value.split('@')[0],
+          email: email.value,
+          role: data.role || 'user'
+        })
+        
+        // 如果选择了兴趣标签，直接提交
+        if (selectedInterests.value.length > 0) {
+          await auth.updateInterests(selectedInterests.value)
+        }
+      }
+      
+      successMsg.value = '注册成功！正在跳转...'
+      
+      // 短暂延迟后跳转到首页
+      setTimeout(() => {
+        router.push('/')
+      }, 1000)
     } else {
       errorMsg.value = data.error || '注册失败'
     }
@@ -100,6 +149,19 @@ const handleRegister = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+// 跳过兴趣选择，直接完成注册
+const skipInterests = async () => {
+  step.value = 2  // 回到步骤2完成注册
+  await handleRegister()
+}
+
+// 提交兴趣选择并完成注册
+const submitWithInterests = async () => {
+  step.value = 2  // 先完成注册
+  // handleRegister 中会自动提交已选择的兴趣标签
+  await handleRegister()
 }
 </script>
 
@@ -111,19 +173,24 @@ const handleRegister = async () => {
 
       <!-- 步骤指示器 -->
       <div class="steps">
-        <div class="step-item" :class="{ active: step >= 1 }">
-          <span class="step-num">1</span>
+        <div class="step-item" :class="{ active: step >= 1, done: step > 1 }">
+          <span class="step-num">{{ step > 1 ? '✓' : '1' }}</span>
           <span class="step-label">验证邮箱</span>
         </div>
         <div class="step-line" :class="{ active: step >= 2 }"></div>
-        <div class="step-item" :class="{ active: step >= 2 }">
-          <span class="step-num">2</span>
+        <div class="step-item" :class="{ active: step >= 2, done: step > 2 }">
+          <span class="step-num">{{ step > 2 ? '✓' : '2' }}</span>
           <span class="step-label">完善信息</span>
+        </div>
+        <div class="step-line" :class="{ active: step >= 3 }"></div>
+        <div class="step-item" :class="{ active: step >= 3 }">
+          <span class="step-num">3</span>
+          <span class="step-label">兴趣选择</span>
         </div>
       </div>
 
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
-      <div v-if="successMsg && step === 2" class="success-msg">{{ successMsg }}</div>
+      <div v-if="successMsg && (step === 2 || step === 3)" class="success-msg">{{ successMsg }}</div>
 
       <!-- Step 1: 输入邮箱 -->
       <form v-if="step === 1" @submit.prevent="sendCode">
@@ -137,7 +204,7 @@ const handleRegister = async () => {
       </form>
 
       <!-- Step 2: 验证码 + 密码 -->
-      <form v-if="step === 2" @submit.prevent="handleRegister">
+      <form v-if="step === 2 && !successMsg.includes('成功')" @submit.prevent="handleRegister">
         <div class="input-group">
           <label>邮箱</label>
           <div class="email-display">{{ email }}</div>
@@ -170,12 +237,59 @@ const handleRegister = async () => {
           </div>
         </div>
         <button type="submit" class="btn btn-primary full-width" :disabled="isLoading">
-          {{ isLoading ? '注册中...' : '注册' }}
+          {{ isLoading ? '注册中...' : '下一步：选择兴趣' }}
         </button>
         <button type="button" @click="step = 1; errorMsg = ''; successMsg = ''" class="btn btn-ghost full-width" style="margin-top: 10px;">
           返回上一步
         </button>
       </form>
+
+      <!-- Step 3: 选择兴趣标签 -->
+      <div v-if="step === 3 || (successMsg && successMsg.includes('成功'))">
+        <p class="interest-hint">选择你感兴趣的领域，我们将为你个性化推荐内容（可多选，最多5个）</p>
+        
+        <div class="interest-grid">
+          <button
+            v-for="cat in categories"
+            :key="cat.id"
+            type="button"
+            class="interest-chip"
+            :class="{ selected: isInterestSelected(cat.id) }"
+            :style="isInterestSelected(cat.id) ? { '--chip-color': cat.color, borderColor: cat.color } : {}"
+            @click="toggleInterest(cat.id)"
+          >
+            <span class="interest-icon">{{ cat.icon }}</span>
+            <span class="interest-name">{{ cat.name }}</span>
+            <span v-if="isInterestSelected(cat.id)" class="check-mark">✓</span>
+          </button>
+        </div>
+
+        <p class="interest-count" v-if="selectedInterests.length > 0">
+          已选 <strong>{{ selectedInterests.length }}</strong>/5 个
+        </p>
+
+        <div class="step-actions">
+          <button 
+            type="button"
+            @click="skipInterests"
+            class="btn btn-ghost full-width"
+          >
+            跳过
+          </button>
+          <button
+            type="button"
+            @click="submitWithInterests"
+            class="btn btn-primary full-width"
+            :disabled="isLoading"
+          >
+            {{ isLoading ? '完成中...' : '完成注册' }}
+          </button>
+        </div>
+
+        <button type="button" @click="step = 2; errorMsg = ''; successMsg = ''" class="btn btn-ghost full-width" style="margin-top: 10px;">
+          返回上一步
+        </button>
+      </div>
 
       <div class="footer-link">
         已有账户？<RouterLink to="/login">登录</RouterLink>
@@ -195,7 +309,7 @@ const handleRegister = async () => {
 .register-card {
   padding: 40px;
   width: 100%;
-  max-width: 420px;
+  max-width: 480px;
   border-radius: var(--radius-md);
 }
 
@@ -232,6 +346,12 @@ h2 {
   opacity: 1;
 }
 
+.step-item.done .step-num {
+  background: #10B981;
+  border-color: #10B981;
+  color: #fff;
+}
+
 .step-num {
   width: 28px;
   height: 28px;
@@ -244,6 +364,7 @@ h2 {
   justify-content: center;
   font-size: 0.85rem;
   font-weight: 600;
+  transition: all 0.3s;
 }
 
 .step-item.active .step-num {
@@ -258,10 +379,10 @@ h2 {
 }
 
 .step-line {
-  width: 40px;
+  width: 30px;
   height: 2px;
   background: rgba(255, 255, 255, 0.1);
-  margin: 0 12px;
+  margin: 0 10px;
   transition: background 0.3s;
 }
 
@@ -375,5 +496,95 @@ label {
 
 .pwd-hints span.pass {
   color: #34d399;
+}
+
+/* 兴趣标签选择样式 */
+.interest-hint {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+.interest-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.interest-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  font-family: inherit;
+}
+
+.interest-chip:hover:not(.selected) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.interest-chip.selected {
+  background: linear-gradient(135deg, rgba(var(--chip-color), 0.15), rgba(var(--chip-color), 0.08));
+  border-color: var(--chip-color);
+  box-shadow: 0 4px 15px -4px var(--chip-color);
+}
+
+.interest-icon {
+  font-size: 1.2rem;
+}
+
+.interest-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #CBD5E1;
+  flex: 1;
+}
+
+.interest-chip.selected .interest-name {
+  color: #fff;
+}
+
+.check-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--chip-color);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.interest-count {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.interest-count strong {
+  color: var(--primary);
+}
+
+.step-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.step-actions .btn {
+  flex: 1;
 }
 </style>

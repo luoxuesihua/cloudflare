@@ -17,19 +17,49 @@ async function getUser(c) {
     return userStr ? JSON.parse(userStr) : null;
 }
 
-// ========== 文章列表（支持多维度筛选 + 关键词搜索） ==========
+// ========== 安全性：SQL 参数白名单（防止注入）==========
+const ALLOWED_SORT_COLUMNS = ['created_at', 'hot_score']
+const ALLOWED_SORT_ORDERS = ['ASC', 'DESC']
+
+function validateSortParams(sortBy, order) {
+    const safeSortBy = ALLOWED_SORT_COLUMNS.includes(sortBy) ? sortBy : 'created_at'
+    const safeOrder = ALLOWED_SORT_ORDERS.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC'
+    return { safeSortBy, safeOrder }
+}
+
+// ========== 安全性：XSS 防护（HTML 实体转义）==========
+function sanitizeHtml(text) {
+    if (!text) return ''
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\//g, '&#x2F;')
+}
+
+// ========== 文章列表（支持多维度筛选 + 关键词搜索 + 个性化推荐） ==========
 posts.get('/', async (c) => {
     const tag = c.req.query('tag')
     const category = c.req.query('category')
     const source = c.req.query('source')
     const keyword = c.req.query('keyword')
-    const sortBy = c.req.query('sort') || 'created_at'    // created_at | hot_score
-    const order = c.req.query('order') || 'DESC'
+    
+    // 安全性：使用白名单校验排序参数
+    let sortBy = c.req.query('sort') || 'created_at'
+    let order = c.req.query('order') || 'DESC'
+    const { safeSortBy, safeOrder } = validateSortParams(sortBy, order)
+    
     const limit = Math.min(parseInt(c.req.query('limit') || '20', 10), 50)
     const offset = parseInt(c.req.query('offset') || '0', 10)
 
+    // 获取当前用户（用于个性化推荐）
+    const user = await getUser(c)
+    const userInterests = user?.interests || []
+
     const db = getDb(c)
-    const result = await db.findAllPosts(tag, category, source, keyword, sortBy, order, limit, offset)
+    const result = await db.findAllPosts(tag, category, source, keyword, safeSortBy, safeOrder, limit, offset, userInterests)
     return c.json(result)
 })
 
@@ -177,11 +207,14 @@ posts.post('/:id/comments', async (c) => {
         return c.json({ error: '评论内容不能超过 500 字' }, 400)
     }
 
+    // 安全性：XSS 防护 - 转义 HTML 特殊字符
+    const sanitizedContent = sanitizeHtml(content.trim())
+    
     const db = getDb(c)
     const post = await db.findPostById(postId)
     if (!post) return c.json({ error: '文章不存在' }, 404)
 
-    const commentId = await db.createComment(postId, user.id, user.username, content.trim())
+    const commentId = await db.createComment(postId, user.id, user.username, sanitizedContent)
     return c.json({
         success: true,
         comment: {
@@ -189,7 +222,7 @@ posts.post('/:id/comments', async (c) => {
             post_id: postId,
             user_id: user.id,
             username: user.username,
-            content: content.trim(),
+            content: sanitizedContent,
             created_at: new Date().toISOString()
         }
     }, 201)
@@ -212,6 +245,49 @@ posts.delete('/:id/comments/:commentId', async (c) => {
     }
 
     await db.deleteComment(commentId)
+    return c.json({ success: true })
+})
+
+// ========== 阅读历史接口 ==========
+
+// 记录阅读历史（用户访问文章详情时调用）
+posts.post('/:id/read', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '请先登录' }, 401)
+
+    const postId = parseInt(c.req.param('id'))
+    const db = getDb(c)
+    
+    // 验证文章存在
+    const post = await db.findPostById(postId)
+    if (!post) return c.json({ error: '文章不存在' }, 404)
+
+    await db.recordReadingHistory(user.id, postId)
+    return c.json({ success: true })
+})
+
+// 获取阅读历史列表
+posts.get('/history', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '请先登录' }, 401)
+
+    const limit = Math.min(parseInt(c.req.query('limit') || '20', 10), 50)
+    const offset = parseInt(c.req.query('offset') || '0', 10)
+    
+    const db = getDb(c)
+    const history = await db.getReadingHistory(user.id, limit, offset)
+    const count = await db.getReadingHistoryCount(user.id)
+    
+    return c.json({ history, total: count })
+})
+
+// 清空阅读历史
+posts.delete('/history', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '请先登录' }, 401)
+
+    const db = getDb(c)
+    await db.clearReadingHistory(user.id)
     return c.json({ success: true })
 })
 
