@@ -101,10 +101,18 @@ export class Database {
 
     async deletePostsByIds(ids) {
         if (!ids || !ids.length) return null;
-        const placeholders = ids.map(() => '?').join(',');
-        const stmt = this.db.prepare(`DELETE FROM notes WHERE id IN (${placeholders})`);
-        // D1 bind 支持可变参数，逐个绑定
-        return await stmt.bind(...ids).run();
+        // D1 每次查询最多约 100 个绑定参数，分批次执行
+        const BATCH_SIZE = 100;
+        let totalDeleted = 0;
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+            const batch = ids.slice(i, i + BATCH_SIZE);
+            const placeholders = batch.map(() => '?').join(',');
+            const result = await this.db.prepare(
+                `DELETE FROM notes WHERE id IN (${placeholders})`
+            ).bind(...batch).run();
+            totalDeleted += result.meta?.changes_written || batch.length;
+        }
+        return { total_deleted: totalDeleted };
     }
 
     // 分类统计

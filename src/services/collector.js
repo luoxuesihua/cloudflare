@@ -228,15 +228,8 @@ const ALL_FEEDS = [
  * 抓取微博热搜 (非 RSS，HTML 解析)
  * TrendRadar 的核心能力之一：多平台热搜聚合
  */
+// 微博热搜 fetcher 保留，但暂从采集列表移除，以减少综合资讯中微博内容占比
 const HOT_SEARCH_SOURCES = [
-  {
-    id: 'weibo',
-    name: '微博热搜',
-    url: 'https://weibo.com/ajax/side/hotSearch',
-    fetchFn: 'weiboHot',
-    category: 'general',
-    icon: '🔥'
-  },
   {
     id: 'zhihu',
     name: '知乎热榜',
