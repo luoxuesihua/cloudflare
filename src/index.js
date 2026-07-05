@@ -59,6 +59,14 @@ function isAllowedOrigin(c, origin) {
     return origin && allowedOrigins(c.env).includes(origin)
 }
 
+async function deriveTempKey(ip, ua) {
+    const data = new TextEncoder().encode(ip + ua.slice(0, 50))
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    return `csrf:${hashHex.slice(0, 32)}`
+}
+
 function applyApiCors(c) {
     const origin = c.req.header('Origin')
 
@@ -154,8 +162,8 @@ async function csrfProtection(c, next) {
         // 使用 IP + User-Agent 作为 session 标识符的替代
         const ip = c.req.header('CF-Connecting-IP') || 'unknown'
         const ua = c.req.header('User-Agent') || ''
-        const tempKey = `csrf:${Buffer.from(ip + ua.slice(0, 50)).toString('base64').slice(0, 32)}`
-        
+        const tempKey = await deriveTempKey(ip, ua)
+
         const storedToken = await c.env.suyuankv.get(tempKey)
         if (storedToken !== csrfToken) {
             return c.json({ error: 'CSRF 验证失败，请刷新页面重试' }, 403)
@@ -188,7 +196,7 @@ app.get('/api/csrf-token', async (c) => {
         // 未登录用户：使用 IP + UA 作为临时标识
         const ip = c.req.header('CF-Connecting-IP') || 'unknown'
         const ua = c.req.header('User-Agent') || ''
-        const tempKey = `csrf:${Buffer.from(ip + ua.slice(0, 50)).toString('base64').slice(0, 32)}`
+        const tempKey = await deriveTempKey(ip, ua)
         await c.env.suyuankv.put(tempKey, token, { 
             expirationTtl: 3600 // 1小时有效
         })
