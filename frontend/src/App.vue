@@ -63,7 +63,7 @@ const closeMenu = () => {
 
     <footer class="main-footer">
       <div class="container">
-        <p>&copy; 2025 万象新闻 · 基于 Cloudflare Workers 构建 · 聚合 30+ 优质信息源</p>
+        <p>&copy; 2025 万象新闻 · 基于 Cloudflare Workers 构建 · 聚合 40+ 优质信息源</p>
       </div>
     </footer>
   </div>

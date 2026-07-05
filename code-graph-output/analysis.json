@@ -1,0 +1,545 @@
+{
+  "modules": {
+    "test_rss.js": {
+      "file_path": "test_rss.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [
+        {
+          "name": "test",
+          "line_start": 9,
+          "line_end": 10,
+          "parameters": [
+            "u"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "main",
+          "line_start": 28,
+          "line_end": 29,
+          "parameters": [],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        }
+      ],
+      "classes": []
+    },
+    "frontend\\vite.config.js": {
+      "file_path": "frontend\\vite.config.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [],
+      "classes": []
+    },
+    "src\\db.js": {
+      "file_path": "src\\db.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [
+        {
+          "name": "extractSourceFromUsername",
+          "line_start": 181,
+          "line_end": 182,
+          "parameters": [
+            "username"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        }
+      ],
+      "classes": [
+        {
+          "name": "Database",
+          "line_start": 1,
+          "line_end": 2,
+          "bases": [],
+          "attributes": [],
+          "methods": [],
+          "docstring": null
+        }
+      ]
+    },
+    "src\\email.js": {
+      "file_path": "src\\email.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [
+        {
+          "name": "generateCode",
+          "line_start": 6,
+          "line_end": 7,
+          "parameters": [],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "sendVerificationCode",
+          "line_start": 11,
+          "line_end": 12,
+          "parameters": [
+            "env",
+            "toEmail",
+            "code"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        }
+      ],
+      "classes": []
+    },
+    "src\\index.js": {
+      "file_path": "src\\index.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [],
+      "classes": []
+    },
+    "frontend\\src\\main.js": {
+      "file_path": "frontend\\src\\main.js",
+      "language": "javascript",
+      "imports": [
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "./style.css",
+              "as": null
+            }
+          ]
+        },
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "./styles/theme.css",
+              "as": null
+            }
+          ]
+        }
+      ],
+      "functions": [],
+      "classes": []
+    },
+    "frontend\\src\\composables\\useAuth.js": {
+      "file_path": "frontend\\src\\composables\\useAuth.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [
+        {
+          "name": "getInitialToken",
+          "line_start": 8,
+          "line_end": 9,
+          "parameters": [],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "getInitialUser",
+          "line_start": 24,
+          "line_end": 25,
+          "parameters": [],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "useAuth",
+          "line_start": 33,
+          "line_end": 34,
+          "parameters": [],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "setAuth",
+          "line_start": 37,
+          "line_end": 38,
+          "parameters": [
+            "tokenVal",
+            "userData"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "logout",
+          "line_start": 46,
+          "line_end": 47,
+          "parameters": [],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "getHeaders",
+          "line_start": 54,
+          "line_end": 55,
+          "parameters": [],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        }
+      ],
+      "classes": []
+    },
+    "frontend\\src\\router\\index.js": {
+      "file_path": "frontend\\src\\router\\index.js",
+      "language": "javascript",
+      "imports": [
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "../views/HomeView.vue",
+              "as": null
+            }
+          ]
+        },
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "../views/PostView.vue",
+              "as": null
+            }
+          ]
+        },
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "../views/LoginView.vue",
+              "as": null
+            }
+          ]
+        },
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "../views/RegisterView.vue",
+              "as": null
+            }
+          ]
+        },
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "../views/EditorView.vue",
+              "as": null
+            }
+          ]
+        },
+        {
+          "type": "import",
+          "names": [
+            {
+              "name": "../views/AdminView.vue",
+              "as": null
+            }
+          ]
+        }
+      ],
+      "functions": [],
+      "classes": []
+    },
+    "src\\routes\\auth.js": {
+      "file_path": "src\\routes\\auth.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [
+        {
+          "name": "getDb",
+          "line_start": 7,
+          "line_end": 8,
+          "parameters": [
+            "c"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "hashPassword",
+          "line_start": 11,
+          "line_end": 12,
+          "parameters": [
+            "password"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "validatePassword",
+          "line_start": 18,
+          "line_end": 19,
+          "parameters": [
+            "password"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "getUser",
+          "line_start": 26,
+          "line_end": 27,
+          "parameters": [
+            "c"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        }
+      ],
+      "classes": []
+    },
+    "src\\routes\\posts.js": {
+      "file_path": "src\\routes\\posts.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [
+        {
+          "name": "getDb",
+          "line_start": 8,
+          "line_end": 9,
+          "parameters": [
+            "c"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "getUser",
+          "line_start": 12,
+          "line_end": 13,
+          "parameters": [
+            "c"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        }
+      ],
+      "classes": []
+    },
+    "src\\services\\collector.js": {
+      "file_path": "src\\services\\collector.js",
+      "language": "javascript",
+      "imports": [],
+      "functions": [
+        {
+          "name": "decodeHtmlEntities",
+          "line_start": 214,
+          "line_end": 215,
+          "parameters": [
+            "text"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "cleanPlainText",
+          "line_start": 223,
+          "line_end": 224,
+          "parameters": [
+            "text"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "isPredominantlyChinese",
+          "line_start": 231,
+          "line_end": 232,
+          "parameters": [
+            "text"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "htmlToMarkdown",
+          "line_start": 239,
+          "line_end": 240,
+          "parameters": [
+            "html"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "normalizeBody",
+          "line_start": 268,
+          "line_end": 269,
+          "parameters": [
+            "body",
+            "title"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "formatArticle",
+          "line_start": 282,
+          "line_end": 283,
+          "parameters": [
+            "{ title",
+            "body",
+            "link",
+            "sourceName",
+            "sourceDesc",
+            "hotScore }"
+          ],
+          "return_type": null,
+          "is_async": false,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "fetchWeiboHot",
+          "line_start": 300,
+          "line_end": 301,
+          "parameters": [
+            "env"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "fetchZhihuHot",
+          "line_start": 333,
+          "line_end": 334,
+          "parameters": [
+            "env"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "fetchBaiduHot",
+          "line_start": 354,
+          "line_end": 355,
+          "parameters": [
+            "env"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "collectNews",
+          "line_start": 395,
+          "line_end": 396,
+          "parameters": [
+            "env"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        },
+        {
+          "name": "collectHotSearch",
+          "line_start": 498,
+          "line_end": 499,
+          "parameters": [
+            "env"
+          ],
+          "return_type": null,
+          "is_async": true,
+          "complexity": 1,
+          "calls": [],
+          "docstring": null
+        }
+      ],
+      "classes": []
+    }
+  },
+  "statistics": {
+    "total_files": 11,
+    "total_functions": 28,
+    "total_classes": 1,
+    "total_lines": 0,
+    "languages": {
+      "javascript": 11
+    },
+    "complexity": {
+      "average": 1.0,
+      "max": 1,
+      "high_complexity_functions": []
+    }
+  }
+}

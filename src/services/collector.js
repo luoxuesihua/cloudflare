@@ -2,7 +2,7 @@
  * 万象新闻采集引擎 (Panorama News Collector)
  * 
  * 参考 TrendRadar (54K★) 多平台聚合 + NewsNow (4.5K★) 实时新闻理念
- * 扩展至 30+ 源，覆盖 6 大分类：综合、AI、编程、运维、产品、财经
+ * 扩展至 40+ 源，覆盖 6 大分类：综合、AI、编程、运维、产品、财经
  */
 import { Database } from '../db.js';
 
@@ -56,6 +56,31 @@ const FEEDS_GENERAL = [
     desc: '开发者社区周榜',
     urlBackup: ['https://rsshub.rss.geek.zone/juejin/trending/all/weekly', 'https://rsshub.app/juejin/trending/all/weekly']
   },
+  {
+    url: 'https://www.huxiu.com/rss/0.xml',
+    name: '虎嗅网', category: 'general', hotScore: 82, lang: 'zh',
+    desc: '科技商业观察'
+  },
+  {
+    url: 'https://www.ifanr.com/feed',
+    name: '爱范儿', category: 'general', hotScore: 78, lang: 'zh',
+    desc: '科技数码媒体'
+  },
+  {
+    url: 'https://www.ithome.com/rss/',
+    name: 'IT之家', category: 'general', hotScore: 80, lang: 'zh',
+    desc: 'IT资讯门户'
+  },
+  {
+    url: 'https://www.leiphone.com/feed',
+    name: '雷锋网', category: 'general', hotScore: 75, lang: 'zh',
+    desc: '智能科技媒体'
+  },
+  {
+    url: 'https://www.pingwest.com/feed',
+    name: '品玩', category: 'general', hotScore: 72, lang: 'zh',
+    desc: '科技媒体与创新报道'
+  },
 ];
 
 // [AI 前沿] - 大模型、人工智能
@@ -64,6 +89,11 @@ const FEEDS_AI = [
     url: 'https://www.jiqizhixin.com/rss',
     name: '机器之心', category: 'ai', hotScore: 88, lang: 'zh',
     desc: '全球人工智能信息服务'
+  },
+  {
+    url: 'https://www.qbitai.com/feed',
+    name: '量子位', category: 'ai', hotScore: 87, lang: 'zh',
+    desc: 'AI 科技媒体'
   },
   {
     url: 'https://rsshub.app/36kr/motif/3276897824862212',
@@ -111,6 +141,17 @@ const FEEDS_DEV = [
     desc: '每日 GitHub 热门项目',
     urlBackup: ['https://rsshub.moeyy.cn/github/trending/daily', 'https://rsshub.pseudoyu.com/github/trending/daily', 'https://rsshub.wheremylife.cn/github/trending/daily']
   },
+  {
+    url: 'https://cloud.tencent.com/developer/feed',
+    name: '腾讯云社区', category: 'dev', hotScore: 76, lang: 'zh',
+    desc: '腾讯云开发者社区'
+  },
+  {
+    url: 'https://rsshub.moeyy.cn/hellogithub',
+    name: 'HelloGitHub', category: 'dev', hotScore: 72, lang: 'zh',
+    desc: '有趣的开源项目推荐',
+    urlBackup: ['https://rsshub.app/hellogithub']
+  },
 ];
 
 // [运维架构]
@@ -135,6 +176,11 @@ const FEEDS_PRODUCT = [
     name: '少数派', category: 'product', hotScore: 72, lang: 'zh',
     desc: '数字生活与效率指南',
     urlBackup: ['https://rsshub.moeyy.cn/sspai', 'https://rsshub.pseudoyu.com/sspai', 'https://rsshub.wheremylife.cn/sspai']
+  },
+  {
+    url: 'https://www.woshipm.com/feed',
+    name: '人人都是产品经理', category: 'product', hotScore: 75, lang: 'zh',
+    desc: '产品/运营/设计社区'
   },
   {
     url: 'https://rsshub.app/uisdc/topic/design',
@@ -316,7 +362,7 @@ async function fetchWeiboHot(env) {
       return keywords.some(kw => text.includes(kw.toUpperCase()));
     });
     
-    const items = filteredItems.slice(0, 20);
+    const items = filteredItems.slice(0, 10);
     
     return items.map((item, i) => ({
       title: item.word || item.note || '',
@@ -527,7 +573,8 @@ export async function collectHotSearch(env) {
           '*本文由 万象热搜采集器 自动抓取*'
         ].filter(Boolean).join('\n');
 
-        const hotScore = Math.max(0, Math.min(100, 100 - (item.rank * 3) + Math.floor((item.hotValue || 0) / 10000)));
+        const rankPenalty = source.id === 'weibo' ? 5 : 3; // 微博热搜降权，减少综合资讯中微博占比
+        const hotScore = Math.max(0, Math.min(100, 100 - (item.rank * rankPenalty) + Math.floor((item.hotValue || 0) / 10000)));
         await db.createPost(0, `热搜Bot (${source.name})`, item.title, hotContent, '热搜,general', hotScore, 'general');
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 2 * 60 * 60 });
         totalImported++;
