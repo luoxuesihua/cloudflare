@@ -245,18 +245,18 @@ onMounted(() => {
         <!-- 顶部色条 -->
         <div class="card-topbar" :style="{ background: (getSourceStyle(post.username).color || '#0EA5E9') }"></div>
 
-        <!-- 热度标识 -->
-        <span v-if="getHotLevel(post.hot_score)" class="hot-badge" :class="getHotLevel(post.hot_score)?.cls">
-          {{ getHotLevel(post.hot_score)?.icon }} {{ getHotLevel(post.hot_score)?.label }}
-        </span>
-
         <!-- 内容区 -->
         <div class="card-body">
           <div class="card-meta">
             <span class="source-tag" :style="{ color: getSourceStyle(post.username).color, background: getSourceStyle(post.username).color + '15' }">
               {{ extractSource(post.username) || post.username }}
             </span>
-            <span class="card-time">{{ timeAgo(post.created_at) }}</span>
+            <div class="card-meta-right">
+              <span v-if="getHotLevel(post.hot_score)" class="hot-badge-inline" :class="getHotLevel(post.hot_score)?.cls">
+                {{ getHotLevel(post.hot_score)?.label }}
+              </span>
+              <span class="card-time">{{ timeAgo(post.created_at) }}</span>
+            </div>
           </div>
 
           <h2 class="card-title">
@@ -470,15 +470,18 @@ onMounted(() => {
   width: 100%;
   opacity: 0.8;
 }
-.hot-badge {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  font-size: 0.7rem;
+.card-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.hot-badge-inline {
+  font-size: 0.66rem;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
-  z-index: 2;
+  padding: 1px 6px;
+  border-radius: 4px;
+  line-height: 1.4;
 }
 .hot-boom {
   background: rgba(239,68,68,0.15);
