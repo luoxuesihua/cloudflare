@@ -5,7 +5,7 @@ import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
 const route = useRoute()
-const { setAuth } = useAuth()
+const { setAuth, getHeaders, refreshCsrf } = useAuth()
 
 // 登录方式: 'password' | 'code'
 const loginMode = ref('password')
@@ -37,9 +37,10 @@ const handleLogin = async () => {
   errorMsg.value = ''
 
   try {
+    await refreshCsrf()
     const res = await fetch('/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify({ username: username.value, password: password.value })
     })
     const data = await res.json()
@@ -69,9 +70,10 @@ const sendLoginCode = async () => {
   errorMsg.value = ''
 
   try {
+    await refreshCsrf()
     const res = await fetch('/api/auth/send-code', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify({ email: codeEmail.value, type: 'login' })
     })
     const data = await res.json()
@@ -105,9 +107,10 @@ const handleCodeLogin = async () => {
   errorMsg.value = ''
 
   try {
+    await refreshCsrf()
     const res = await fetch('/api/auth/login-code', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify({ email: codeEmail.value, code: loginCode.value })
     })
     const data = await res.json()

@@ -49,7 +49,7 @@ const closeMenu = () => {
     <header class="main-header glass-panel">
       <div class="container header-content">
         <RouterLink to="/" class="logo" @click="closeMenu">
-          万象<span class="dot">.</span>新闻
+          万象<span class="dot">.</span>资讯
         </RouterLink>
 
         <!-- 汉堡菜单按钮 (移动端) -->

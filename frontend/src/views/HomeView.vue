@@ -265,7 +265,7 @@ onMounted(() => {
     <!-- 英雄区 -->
     <div class="hero">
       <h1>
-        <span class="gradient-text">万象</span>新闻
+        <span class="gradient-text">万象</span>资讯
         <span class="sub-dot">·</span>
       </h1>
       <p class="hero-desc">
