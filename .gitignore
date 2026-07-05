@@ -2,3 +2,7 @@ node_modules/
 dist/
 .wrangler/
 .env
+
+# 代码分析工具生成目录（含嵌套 .git 会导致部署失败）
+_codemind_graph/
+code-graph-output/
