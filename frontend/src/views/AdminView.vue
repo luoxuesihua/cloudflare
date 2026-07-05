@@ -100,6 +100,31 @@ const editForm = ref({ username: '', email: '', phone: '' })
 const editLoading = ref(false)
 const editMsg = ref('')
 
+// ========== 源管理 ==========
+const sources = ref([])
+const sourcesLoading = ref(false)
+const sourceEditing = ref(null)
+const sourceForm = ref({
+  url: '', name: '', category: 'general', hotScore: 60, lang: 'zh',
+  description: '', urlBackup: [], isActive: true, sortOrder: 0
+})
+const sourceFormMsg = ref('')
+const sourceFormError = ref(false)
+const sourceFormSaving = ref(false)
+const syncingSourceId = ref(null)
+const syncAllRunning = ref(false)
+const syncResult = ref(null)
+const sourceUrlBackupInput = ref('')
+
+const SOURCE_CATEGORIES = [
+  { id: 'general', name: '综合资讯' },
+  { id: 'ai', name: 'AI 前沿' },
+  { id: 'dev', name: '编程开发' },
+  { id: 'ops', name: '运维架构' },
+  { id: 'product', name: '产品设计' },
+  { id: 'biz', name: '财经商业' }
+]
+
 function startEdit() {
   editForm.value = {
     username: user.value.username,
@@ -154,6 +179,7 @@ const menuItems = computed(() => {
   const items = []
   if (isAdmin.value) {
     items.push({ key: 'posts', label: '文章管理' })
+    items.push({ key: 'sources', label: '源管理' })
     items.push({ key: 'users', label: '用户管理' })
     items.push({ key: 'adduser', label: '添加用户' })
   }
@@ -271,6 +297,169 @@ async function deleteUser(u) {
   } catch (e) { alert('网络错误') }
 }
 
+// ========== 源管理函数 ==========
+
+async function fetchSources() {
+  sourcesLoading.value = true
+  try {
+    const res = await fetch('/api/sources', { headers: getHeaders() })
+    const data = await res.json()
+    sources.value = Array.isArray(data) ? data : []
+  } catch (e) { console.error(e) }
+  finally { sourcesLoading.value = false }
+}
+
+function getCategoryName(catId) {
+  const cat = SOURCE_CATEGORIES.find(c => c.id === catId)
+  return cat ? cat.name : catId
+}
+
+function openAddSource() {
+  sourceEditing.value = null
+  sourceForm.value = {
+    url: '', name: '', category: 'general', hotScore: 60, lang: 'zh',
+    description: '', urlBackup: [], isActive: true, sortOrder: 0
+  }
+  sourceUrlBackupInput.value = ''
+  sourceFormMsg.value = ''
+}
+
+function openEditSource(s) {
+  sourceEditing.value = s
+  sourceForm.value = {
+    url: s.url,
+    name: s.name,
+    category: s.category,
+    hotScore: s.hot_score,
+    lang: s.lang,
+    description: s.description || '',
+    urlBackup: Array.isArray(s.url_backup) ? [...s.url_backup] : [],
+    isActive: s.is_active,
+    sortOrder: s.sort_order || 0
+  }
+  sourceUrlBackupInput.value = (Array.isArray(s.url_backup) ? s.url_backup : []).join(', ')
+  sourceFormMsg.value = ''
+}
+
+function closeSourceForm() {
+  sourceEditing.value = null
+  sourceEditing.value = undefined // 关闭弹窗
+  sourceFormMsg.value = ''
+}
+
+async function saveSource() {
+  const f = sourceForm.value
+  if (!f.url || !f.name) {
+    sourceFormMsg.value = 'URL 和名称为必填项'
+    sourceFormError.value = true
+    return
+  }
+  // Parse urlBackup from comma-separated input
+  f.urlBackup = sourceUrlBackupInput.value
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+
+  sourceFormSaving.value = true
+  sourceFormMsg.value = ''
+  try {
+    const isEdit = sourceEditing.value && sourceEditing.value.id
+    const method = isEdit ? 'PUT' : 'POST'
+    const url = isEdit ? `/api/sources/${sourceEditing.value.id}` : '/api/sources'
+    const res = await fetch(url, {
+      method,
+      headers: getHeaders(),
+      body: JSON.stringify(f)
+    })
+    const data = await res.json()
+    if (res.ok) {
+      sourceEditing.value = null
+      fetchSources()
+    } else {
+      sourceFormMsg.value = data.error || '保存失败'
+      sourceFormError.value = true
+    }
+  } catch (e) {
+    sourceFormMsg.value = '网络错误'
+    sourceFormError.value = true
+  } finally {
+    sourceFormSaving.value = false
+  }
+}
+
+async function toggleSourceActive(s) {
+  try {
+    const res = await fetch(`/api/sources/${s.id}/toggle`, {
+      method: 'PUT',
+      headers: getHeaders()
+    })
+    const data = await res.json()
+    if (res.ok) {
+      s.is_active = data.is_active
+    }
+  } catch (e) { console.error(e) }
+}
+
+async function deleteSource(s) {
+  if (!confirm(`确定要删除源 "${s.name}" 吗？此操作不可恢复。`)) return
+  try {
+    const res = await fetch(`/api/sources/${s.id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    })
+    if (res.ok) {
+      sources.value = sources.value.filter(x => x.id !== s.id)
+    } else {
+      const data = await res.json()
+      alert(data.error || '删除失败')
+    }
+  } catch (e) { alert('网络错误') }
+}
+
+async function syncSource(s) {
+  syncingSourceId.value = s.id
+  syncResult.value = null
+  try {
+    const res = await fetch(`/api/sources/${s.id}/sync`, {
+      method: 'POST',
+      headers: getHeaders()
+    })
+    const data = await res.json()
+    syncResult.value = data
+    if (data.success) {
+      // 同步成功提示
+      alert(`同步「${s.name}」完成，入库 ${data.collected || 0} 条`)
+    } else {
+      alert(`同步失败: ${data.error || '未知错误'}`)
+    }
+  } catch (e) { alert('网络错误') }
+  finally { syncingSourceId.value = null }
+}
+
+async function syncAllSources() {
+  if (sources.value.length === 0) {
+    alert('没有可同步的源')
+    return
+  }
+  if (!confirm(`确定要同步全部 ${sources.value.length} 个动态源吗？`)) return
+  syncAllRunning.value = true
+  syncResult.value = null
+  try {
+    const res = await fetch('/api/sources/sync-all', {
+      method: 'POST',
+      headers: getHeaders()
+    })
+    const data = await res.json()
+    syncResult.value = data
+    if (data.success) {
+      alert(`全量同步完成，共入库 ${data.totalCollected || 0} 条`)
+    } else {
+      alert(`同步失败: ${data.error || '未知错误'}`)
+    }
+  } catch (e) { alert('网络错误') }
+  finally { syncAllRunning.value = false }
+}
+
 async function changePassword() {
   if (!oldPassword.value || !newPwd.value) {
     pwdMessage.value = '请填写所有字段'
@@ -307,6 +496,7 @@ function switchTab(tab) {
   activeTab.value = tab
   if (tab === 'posts') fetchPosts()
   if (tab === 'users') fetchUsers()
+  if (tab === 'sources') fetchSources()
 }
 
 onMounted(() => {
@@ -521,6 +711,150 @@ onMounted(() => {
             </select>
           </div>
           <button @click="addUser" class="btn btn-primary">创建用户</button>
+        </div>
+      </div>
+
+      <!-- 源管理 -->
+      <div v-if="activeTab === 'sources' && isAdmin">
+        <div class="header-actions">
+          <h2>源管理</h2>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button @click="syncAllSources" class="btn btn-primary btn-sm" :disabled="syncAllRunning || sources.length === 0">
+              {{ syncAllRunning ? '同步中...' : '全部同步' }}
+            </button>
+            <button @click="openAddSource" class="btn btn-primary btn-sm">+ 添加源</button>
+          </div>
+        </div>
+
+        <div v-if="sourcesLoading" class="loading-text">加载中...</div>
+
+        <!-- 桌面端表格 -->
+        <table v-else-if="sources.length" class="data-table desktop-only">
+          <thead>
+            <tr>
+              <th style="width:50px">状态</th>
+              <th>名称</th>
+              <th>分类</th>
+              <th>URL</th>
+              <th>热度</th>
+              <th style="width:200px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in sources" :key="s.id">
+              <td>
+                <span :class="['status-dot', s.is_active ? 'active' : 'inactive']" :title="s.is_active ? '已启用' : '已停用'"></span>
+              </td>
+              <td><strong>{{ s.name }}</strong></td>
+              <td><span class="cat-tag">{{ getCategoryName(s.category) }}</span></td>
+              <td><span class="url-text" :title="s.url">{{ s.url }}</span></td>
+              <td>{{ s.hot_score }}</td>
+              <td>
+                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                  <button @click="syncSource(s)" class="btn-sm btn-ghost" :disabled="syncingSourceId === s.id">
+                    {{ syncingSourceId === s.id ? '...' : '同步' }}
+                  </button>
+                  <button @click="openEditSource(s)" class="btn-sm btn-ghost">编辑</button>
+                  <button @click="toggleSourceActive(s)" class="btn-sm btn-ghost">
+                    {{ s.is_active ? '停用' : '启用' }}
+                  </button>
+                  <button @click="deleteSource(s)" class="btn-danger-sm">删除</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 移动端卡片 -->
+        <div v-else-if="sources.length" class="mobile-only">
+          <div v-for="s in sources" :key="s.id" class="mobile-card">
+            <div class="mobile-card-header">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span :class="['status-dot', s.is_active ? 'active' : 'inactive']"></span>
+                <strong>{{ s.name }}</strong>
+              </div>
+              <span class="cat-tag">{{ getCategoryName(s.category) }}</span>
+            </div>
+            <div class="mobile-card-meta">
+              <span>热度: {{ s.hot_score }}</span>
+              <span>{{ s.url?.substring(0, 40) }}...</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+              <button @click="syncSource(s)" class="btn-sm btn-ghost" :disabled="syncingSourceId === s.id">
+                {{ syncingSourceId === s.id ? '...' : '同步' }}
+              </button>
+              <button @click="openEditSource(s)" class="btn-sm btn-ghost">编辑</button>
+              <button @click="toggleSourceActive(s)" class="btn-sm btn-ghost">
+                {{ s.is_active ? '停用' : '启用' }}
+              </button>
+              <button @click="deleteSource(s)" class="btn-danger-sm">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <p v-else class="empty-text">暂无自定义源，点击「添加源」开始</p>
+      </div>
+
+      <!-- 源管理弹窗 -->
+      <div v-if="sourceEditing !== undefined" class="modal-overlay" @click.self="closeSourceForm">
+        <div class="modal-box glass-panel" style="width: 500px;">
+          <h3>{{ sourceEditing && sourceEditing.id ? '编辑源' : '添加源' }}</h3>
+          <div v-if="sourceFormMsg" :class="['msg', sourceFormError ? 'error-msg' : 'success-msg']">{{ sourceFormMsg }}</div>
+
+          <div class="input-group">
+            <label>名称 <span style="color:#f87171">*</span></label>
+            <input type="text" v-model="sourceForm.name" class="input-field" placeholder="如：机器之心" />
+          </div>
+          <div class="input-group">
+            <label>RSS URL <span style="color:#f87171">*</span></label>
+            <input type="url" v-model="sourceForm.url" class="input-field" placeholder="https://example.com/rss" />
+          </div>
+          <div class="input-group">
+            <label>描述</label>
+            <input type="text" v-model="sourceForm.description" class="input-field" placeholder="简短描述该源" />
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="input-group">
+              <label>分类</label>
+              <select v-model="sourceForm.category" class="input-field">
+                <option v-for="c in SOURCE_CATEGORIES" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label>热度 (0-100)</label>
+              <input type="number" v-model.number="sourceForm.hotScore" class="input-field" min="0" max="100" />
+            </div>
+          </div>
+          <div class="input-group">
+            <label>备用 URL（多个用逗号分隔）</label>
+            <input type="text" v-model="sourceUrlBackupInput" class="input-field" placeholder="https://backup1.com/rss, https://backup2.com/rss" />
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="input-group">
+              <label>语言</label>
+              <select v-model="sourceForm.lang" class="input-field">
+                <option value="zh">中文</option>
+                <option value="en">英文</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label>排序</label>
+              <input type="number" v-model.number="sourceForm.sortOrder" class="input-field" min="0" />
+            </div>
+          </div>
+          <div class="input-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" v-model="sourceForm.isActive" style="accent-color: var(--primary);" />
+              启用此源
+            </label>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button @click="saveSource" class="btn btn-primary" :disabled="sourceFormSaving">
+              {{ sourceFormSaving ? '保存中...' : '保存' }}
+            </button>
+            <button @click="closeSourceForm" class="btn btn-ghost">取消</button>
+          </div>
         </div>
       </div>
 
@@ -931,5 +1265,31 @@ label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size:
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
+}
+
+/* ===== 源管理 ===== */
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.active {
+  background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+}
+.status-dot.inactive {
+  background: #f87171;
+}
+
+.url-text {
+  display: inline-block;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 </style>

@@ -42,6 +42,23 @@ export class Database {
       )
     `).run();
 
+        await this.db.prepare(`
+      CREATE TABLE IF NOT EXISTS sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT 'general',
+        hot_score INTEGER DEFAULT 60,
+        lang TEXT DEFAULT 'zh',
+        description TEXT DEFAULT '',
+        url_backup TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
         // 兼容旧表结构：添加新字段
         const alterCols = [
             "ALTER TABLE notes ADD COLUMN category TEXT DEFAULT 'general'",
@@ -205,6 +222,52 @@ export class Database {
         return await this.db.prepare(
             "UPDATE users SET password_hash = ? WHERE id = ?"
         ).bind(newHash, userId).run();
+    }
+
+    // ========== 源管理 ==========
+    async findSourceById(id) {
+        return await this.db.prepare("SELECT * FROM sources WHERE id = ?").bind(id).first();
+    }
+
+    async findAllSources() {
+        const { results } = await this.db.prepare(
+            "SELECT * FROM sources ORDER BY sort_order ASC, id ASC"
+        ).all();
+        return results || [];
+    }
+
+    async findActiveSources() {
+        const { results } = await this.db.prepare(
+            "SELECT * FROM sources WHERE is_active = 1 ORDER BY sort_order ASC, id ASC"
+        ).all();
+        return results || [];
+    }
+
+    async createSource({ url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder }) {
+        const result = await this.db.prepare(
+            `INSERT INTO sources (url, name, category, hot_score, lang, description, url_backup, is_active, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(url, name, category || 'general', hotScore || 60, lang || 'zh', description || '',
+               JSON.stringify(urlBackup || []), isActive !== undefined ? isActive : 1, sortOrder || 0).run();
+        return result.meta?.last_row_id || null;
+    }
+
+    async updateSource(id, { url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder }) {
+        return await this.db.prepare(
+            `UPDATE sources SET url = ?, name = ?, category = ?, hot_score = ?, lang = ?, description = ?,
+             url_backup = ?, is_active = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+        ).bind(url, name, category, hotScore, lang, description,
+               JSON.stringify(urlBackup || []), isActive !== undefined ? isActive : 1, sortOrder || 0, id).run();
+    }
+
+    async toggleSourceActive(id, isActive) {
+        return await this.db.prepare(
+            "UPDATE sources SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).bind(isActive, id).run();
+    }
+
+    async deleteSource(id) {
+        return await this.db.prepare("DELETE FROM sources WHERE id = ?").bind(id).run();
     }
 }
 

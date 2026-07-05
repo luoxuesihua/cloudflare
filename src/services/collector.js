@@ -502,13 +502,154 @@ const HOT_FETCHERS = { weiboHot: fetchWeiboHot, zhihuHot: fetchZhihuHot, baiduHo
 /**
  * RSS 新闻采集（后台定时触发 / 手动触发）
  */
+/**
+ * 采集单个 RSS 源（供管理后台手动调用）
+ * @param {object} env - Cloudflare env
+ * @param {object} feed - Feed 配置对象 { url, name, category, hotScore, lang, desc, urlBackup }
+ */
+export async function collectSingleSource(env, feed) {
+    const db = new Database(env);
+    await db.init();
+    let collected = 0;
+    const log = [];
+
+    log.push(`[${feed.category}] ${feed.name}`);
+
+    const urlsToTry = (feed.urlBackup && feed.urlBackup.length > 0)
+        ? [feed.url, ...feed.urlBackup]
+        : [feed.url];
+    let response, lastError = null;
+
+    for (const url of urlsToTry) {
+        try {
+            response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 PanoramaCollector/2.0',
+                    'Accept': 'application/xml, text/xml, application/json, */*'
+                },
+                cf: { cacheTtl: 300 }
+            });
+            if (response.ok) { lastError = null; break; }
+            else { lastError = new Error(`HTTP ${response.status}`); }
+        } catch (err) { lastError = err; }
+    }
+    if (lastError) {
+        log.push(`  ⚠ 所有 URL 均失败: ${lastError.message}`);
+        return { collected, logs: log };
+    }
+
+    const xmlText = await response.text();
+    const items = [];
+    const itemRegex = /<(item|entry)>([\s\S]*?)<\/\1>/g;
+    let match;
+    while ((match = itemRegex.exec(xmlText)) !== null) items.push(match[2]);
+
+    log.push(`  · 解析 ${items.length} 条`);
+
+    for (const itemContent of items) {
+        const titleMatch = itemContent.match(/<title(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+        const title = titleMatch ? cleanPlainText(titleMatch[1]) : '';
+        if (!title) continue;
+
+        let link = '';
+        const rssLinkM = itemContent.match(/<link(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i);
+        if (rssLinkM && rssLinkM[1].trim()) {
+            link = rssLinkM[1].trim();
+        } else {
+            const atomLinkM = itemContent.match(/<link\s+[^>]*href=["']([^"']+)["']/i);
+            if (atomLinkM) link = atomLinkM[1].trim();
+        }
+        if (!link) continue;
+
+        let description = '';
+        const descMatch = itemContent.match(/<(content:encoded|content|description|summary)(?:[^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/i);
+        if (descMatch) description = descMatch[2].trim();
+
+        const markdownDesc = htmlToMarkdown(description);
+
+        if (feed.category !== 'dev' && feed.category !== 'ai') {
+            if (!isPredominantlyChinese(`${title} ${markdownDesc}`)) continue;
+        }
+
+        const kvKey = `pn:news:${btoa(encodeURIComponent(link)).replace(/=/g, '')}`;
+        const imported = await env.suyuankv.get(kvKey);
+        if (imported) continue;
+
+        const content = formatArticle({
+            title, body: markdownDesc, link,
+            sourceName: feed.name,
+            sourceDesc: feed.desc || '',
+            hotScore: feed.hotScore || 60
+        });
+
+        const summary = extractSummary(markdownDesc, title);
+
+        await db.createPost(0, `NewsBot (${feed.name})`, title, content, feed.category, feed.hotScore || 60, feed.category, feed.name, summary);
+        await env.suyuankv.put(kvKey, 'true', { expirationTtl: 14 * 24 * 60 * 60 });
+
+        collected++;
+        if (collected >= 10) { log.push(`  ✓ 已达上限(10条)`); break; }
+    }
+    if (collected > 0) log.push(`  ✓ 入库 ${collected} 条`);
+
+    return { collected, logs: log };
+}
+
+/**
+ * 同步所有数据库中的动态源
+ */
+export async function collectAllDynamicSources(env, dynamicFeeds) {
+    const db = new Database(env);
+    await db.init();
+    let totalCollected = 0;
+    const log = [];
+
+    for (const feed of dynamicFeeds) {
+        const result = await collectSingleSource(env, feed);
+        if (result.logs) log.push(...result.logs);
+        totalCollected += result.collected;
+    }
+
+    log.push(`📊 动态源采集完成：共 ${totalCollected} 条`);
+    return { totalCollected, logs: log };
+}
+
 export async function collectNews(env, onNewPost) {
   const db = new Database(env);
   await db.init();
   let totalCollected = 0;
   const log = [];
 
-  for (const feed of ALL_FEEDS) {
+  // 加载所有硬编码源
+  const allFeeds = [...ALL_FEEDS];
+
+  // 从数据库加载动态源并合并（同名源以数据库配置覆盖硬编码）
+  try {
+    const dynamicSources = await db.findActiveSources();
+    const dynamicFeedNames = new Map();
+    for (const ds of dynamicSources) {
+      const feed = {
+        url: ds.url,
+        name: ds.name,
+        category: ds.category,
+        hotScore: ds.hot_score,
+        lang: ds.lang,
+        desc: ds.description,
+        urlBackup: JSON.parse(ds.url_backup || '[]')
+      };
+      // 数据库源优先覆盖同名硬编码源
+      const existingIdx = allFeeds.findIndex(f => f.name === ds.name);
+      if (existingIdx >= 0) {
+        allFeeds[existingIdx] = feed;
+      } else {
+        allFeeds.push(feed);
+      }
+    }
+  } catch (e) {
+    log.push(`⚠ 加载动态源失败: ${e.message}，使用硬编码源`);
+  }
+
+  for (const feed of allFeeds) {
     log.push(`[${feed.category}] ${feed.name} (${feed.desc || ''})`);
     try {
       const urlsToTry = feed.urlBackup ? [feed.url, ...feed.urlBackup] : [feed.url];

@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import auth from './routes/auth'
 import posts from './routes/posts'
+import sources from './routes/sources'
 import { Database } from './db'
 import { collectNews, collectHotSearch } from './services/collector.js'
 import { asyncAISummarize } from './services/summarizer.js'
@@ -22,6 +23,7 @@ app.use('*', async (c, next) => {
 // API 路由
 app.route('/api/auth', auth)
 app.route('/api/posts', posts)
+app.route('/api/sources', sources)
 
 // 所有非 API 请求交给前端静态资源处理 (Vue SPA)
 app.all('*', async (c) => {
