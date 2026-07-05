@@ -136,13 +136,37 @@ function getHotLevel(score) {
   return null
 }
 
-function getExcerpt(snippet) {
-  if (!snippet) return ''
-  let text = snippet.replace(/<[^>]+>/g, '')
+function getExcerpt(post) {
+  // 优先级：ai_summary > summary > snippet
+  const source = post.ai_summary || post.summary || post.snippet
+  if (!source) return ''
+
+  // 清理文本
+  let text = source
+    .replace(/<[^>]+>/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[#*`_>\-]/g, '')
-    .replace(/\s+/g, ' ').trim()
-  return text.length > 100 ? text.substring(0, 100) + '...' : text
+    .replace(/[#*`_>\-|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // 智能断句：尽量在句号处截断
+  if (text.length > 100) {
+    const truncated = text.substring(0, 100)
+    // 回退到最后一个句号/问号/感叹号
+    const lastPunct = Math.max(
+      truncated.lastIndexOf('。'),
+      truncated.lastIndexOf('！'),
+      truncated.lastIndexOf('？'),
+      truncated.lastIndexOf('.'),
+      truncated.lastIndexOf('!'),
+      truncated.lastIndexOf('?')
+    )
+    if (lastPunct > 40) {
+      return truncated.substring(0, lastPunct + 1)
+    }
+    return truncated + '…'
+  }
+  return text
 }
 
 function timeAgo(dateStr) {
@@ -263,7 +287,10 @@ onMounted(() => {
             <RouterLink :to="'/post/' + post.id">{{ post.title }}</RouterLink>
           </h2>
 
-          <p v-if="post.snippet" class="card-excerpt">{{ getExcerpt(post.snippet) }}</p>
+          <p v-if="post.snippet || post.summary || post.ai_summary" class="card-excerpt">
+            <span v-if="post.ai_summary" class="ai-badge" title="AI 智能摘要">🤖</span>
+            {{ getExcerpt(post) }}
+          </p>
         </div>
 
         <!-- 底部标签 -->
@@ -545,6 +572,11 @@ onMounted(() => {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.ai-badge {
+  font-size: 0.75rem;
+  margin-right: 2px;
+  opacity: 0.7;
 }
 .card-footer {
   padding: 10px 20px 16px;

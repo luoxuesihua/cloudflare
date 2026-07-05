@@ -6,18 +6,46 @@ const route = useRoute()
 const post = ref(null)
 const isLoading = ref(true)
 const error = ref('')
+const aiKeyPoints = ref(null)
+const isLoadingAI = ref(false)
 
 onMounted(async () => {
   try {
     const res = await fetch(`/api/posts/${route.params.id}`)
     if (!res.ok) throw new Error('文章不存在')
     post.value = await res.json()
+    // 读取时尝试获取 AI 要点
+    fetchAISummary()
   } catch (e) {
     error.value = e.message
   } finally {
     isLoading.value = false
   }
 })
+
+async function fetchAISummary() {
+  // 如果已有 ai_summary 且是机器采集的文章，尝试获取要点
+  const token = localStorage.getItem('token')
+  if (!token) return
+
+  try {
+    isLoadingAI.value = true
+    const res = await fetch(`/api/posts/${route.params.id}/summarize`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.ai_summary && !post.value.ai_summary) {
+        post.value.ai_summary = data.ai_summary
+      }
+      if (data.key_points) {
+        aiKeyPoints.value = data.key_points
+      }
+    }
+  } catch { /* silent */ }
+  finally { isLoadingAI.value = false }
+}
 
 function renderMarkdown(text) {
   if (!text) return ''
@@ -56,6 +84,29 @@ function renderMarkdown(text) {
       </header>
 
       <hr class="divider" />
+
+      <!-- AI 摘要 / 要点提炼区域 -->
+      <div v-if="post.ai_summary || post.summary || aiKeyPoints" class="ai-summary-box">
+        <div class="ai-summary-header">
+          <span class="ai-icon">🤖</span>
+          <span class="ai-label">{{ post.ai_summary ? 'AI 智能摘要' : '内容摘要' }}</span>
+          <span v-if="isLoadingAI" class="ai-loading">生成中…</span>
+        </div>
+
+        <!-- AI / 规则摘要 -->
+        <p v-if="post.ai_summary || post.summary" class="ai-summary-text">
+          {{ post.ai_summary || post.summary }}
+        </p>
+
+        <!-- 核心要点列表 -->
+        <ul v-if="aiKeyPoints && aiKeyPoints.length > 0" class="ai-keypoints">
+          <li v-for="(point, i) in aiKeyPoints" :key="i">
+            <span class="kp-dot">{{ i + 1 }}</span>
+            {{ point }}
+          </li>
+        </ul>
+      </div>
+
       <div class="markdown-body" v-html="renderMarkdown(post.content)"></div>
       <hr class="divider" />
 
@@ -108,6 +159,72 @@ function renderMarkdown(text) {
   height: 1px;
   background: rgba(255, 255, 255, 0.1);
   margin: 25px 0;
+}
+
+/* ===== AI 摘要盒子 ===== */
+.ai-summary-box {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.06));
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+}
+.ai-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.ai-icon {
+  font-size: 1.1rem;
+}
+.ai-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #A78BFA;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.ai-loading {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+.ai-summary-text {
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: #D1D5DB;
+  margin: 0;
+}
+.ai-keypoints {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-keypoints li {
+  font-size: 0.88rem;
+  color: #D1D5DB;
+  line-height: 1.6;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.kp-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8B5CF6, #3B82F6);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .markdown-body {

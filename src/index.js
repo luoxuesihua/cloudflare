@@ -6,6 +6,7 @@ import auth from './routes/auth'
 import posts from './routes/posts'
 import { Database } from './db'
 import { collectNews, collectHotSearch } from './services/collector.js'
+import { asyncAISummarize } from './services/summarizer.js'
 
 
 const app = new Hono()
@@ -34,10 +35,18 @@ export default {
     // RSS 新闻采集：每 4 小时
     // 热搜采集：每 30 分钟
     const cron = event.cron || ''
+
+    // AI 摘要回调：采集到新文章后异步生成 AI 摘要
+    const onNewPost = (postId, title, content) => {
+      if (env.AI) {
+        ctx.waitUntil(asyncAISummarize(env, postId, title, content))
+      }
+    }
+
     if (cron.includes('*/30')) {
-      ctx.waitUntil(collectHotSearch(env))
+      ctx.waitUntil(collectHotSearch(env, onNewPost))
     } else {
-      ctx.waitUntil(collectNews(env))
+      ctx.waitUntil(collectNews(env, onNewPost))
     }
   }
 }

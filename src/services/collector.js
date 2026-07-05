@@ -334,6 +334,77 @@ function formatArticle({ title, body, link, sourceName, sourceDesc, hotScore }) 
   ].filter(Boolean).join('\n');
 }
 
+/**
+ * 规则提取摘要：智能提取文章前 2-3 句作为摘要
+ * - 清理 Markdown 标记
+ * - 在句号/问号/感叹号/换行处断句
+ * - 限制约 150 字符，确保语义完整
+ */
+function extractSummary(text, title) {
+  if (!text) return '';
+
+  // 1. 去除 Markdown 标记和 HTML
+  let cleaned = text
+    .replace(/<[^>]+>/g, '')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`#>~|]/g, '')
+    .replace(/^#{1,6}\s+.+$/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\n{2,}/g, '。')
+    .replace(/\n/g, '，')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 2. 如果标题在前面，去掉
+  const plainTitle = title ? title.replace(/[#*_`\[\]]/g, '').trim() : '';
+  if (plainTitle && cleaned.startsWith(plainTitle)) {
+    cleaned = cleaned.slice(plainTitle.length).replace(/^[，。！？\s]+/, '').trim();
+  }
+
+  // 3. 按句子分割，收集前 2-3 个完整句子
+  const sentences = cleaned.split(/(?<=[。！？])/);
+  let summary = '';
+  const MAX_CHARS = 150;
+
+  for (let i = 0; i < sentences.length && i < 3; i++) {
+    const s = sentences[i].trim();
+    if (!s || s.length < 2) continue;
+    if (summary.length + s.length > MAX_CHARS) {
+      // 尽量在句号处截断
+      const remaining = MAX_CHARS - summary.length;
+      if (remaining > 20) {
+        summary += s.substring(0, remaining);
+        // 回退到最后一个句号
+        const lastPeriod = summary.lastIndexOf('。');
+        if (lastPeriod > summary.length * 0.6) {
+          summary = summary.substring(0, lastPeriod + 1);
+        } else {
+          summary += '…';
+        }
+      }
+      break;
+    }
+    summary += s;
+    if (!s.endsWith('。') && !s.endsWith('！') && !s.endsWith('？')) {
+      summary += '。';
+    }
+  }
+
+  // 4. 兜底：如果还是没有内容，取前 120 字符
+  if (summary.length < 10 && cleaned.length > 10) {
+    summary = cleaned.substring(0, 120);
+    const lastPeriod = summary.lastIndexOf('。');
+    if (lastPeriod > 40) {
+      summary = summary.substring(0, lastPeriod + 1);
+    } else {
+      summary += '…';
+    }
+  }
+
+  return summary.trim();
+}
+
 // ==================== 热搜抓取函数 ====================
 
 async function fetchWeiboHot(env) {
@@ -431,7 +502,7 @@ const HOT_FETCHERS = { weiboHot: fetchWeiboHot, zhihuHot: fetchZhihuHot, baiduHo
 /**
  * RSS 新闻采集（后台定时触发 / 手动触发）
  */
-export async function collectNews(env) {
+export async function collectNews(env, onNewPost) {
   const db = new Database(env);
   await db.init();
   let totalCollected = 0;
@@ -514,7 +585,13 @@ export async function collectNews(env) {
           hotScore: feed.hotScore
         });
 
-        await db.createPost(0, `NewsBot (${feed.name})`, title, content, tags, feed.hotScore || 50, feed.category);
+        // 规则摘要：基于正文前几句生成
+        const summary = extractSummary(markdownDesc, title);
+
+        const newId = await db.createPost(0, `NewsBot (${feed.name})`, title, content, tags, feed.hotScore || 50, feed.category, feed.name, summary);
+        if (onNewPost && newId) {
+          onNewPost(newId, title, content);
+        }
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 14 * 24 * 60 * 60 });
 
         feedCount++;
@@ -534,7 +611,7 @@ export async function collectNews(env) {
 /**
  * 热搜榜单采集（每 30 分钟触发一次）
  */
-export async function collectHotSearch(env) {
+export async function collectHotSearch(env, onNewPost) {
   const db = new Database(env);
   await db.init();
   const log = [];
@@ -568,7 +645,11 @@ export async function collectHotSearch(env) {
 
         const rankPenalty = source.id === 'weibo' ? 5 : 3; // 微博热搜降权，减少综合资讯中微博占比
         const hotScore = Math.max(0, Math.min(100, 100 - (item.rank * rankPenalty) + Math.floor((item.hotValue || 0) / 10000)));
-        await db.createPost(0, `热搜Bot (${source.name})`, item.title, hotContent, '热搜,general', hotScore, 'general');
+        const summary = extractSummary(hotContent, item.title);
+        const newId = await db.createPost(0, `热搜Bot (${source.name})`, item.title, hotContent, '热搜,general', hotScore, 'general', source.name, summary);
+        if (onNewPost && newId) {
+          onNewPost(newId, item.title, hotContent);
+        }
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 2 * 60 * 60 });
         totalImported++;
       }

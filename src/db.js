@@ -47,6 +47,8 @@ export class Database {
             "ALTER TABLE notes ADD COLUMN category TEXT DEFAULT 'general'",
             "ALTER TABLE notes ADD COLUMN hot_score INTEGER DEFAULT 50",
             "ALTER TABLE notes ADD COLUMN source_name TEXT DEFAULT ''",
+            "ALTER TABLE notes ADD COLUMN summary TEXT DEFAULT ''",
+            "ALTER TABLE notes ADD COLUMN ai_summary TEXT DEFAULT ''",
             "ALTER TABLE users ADD COLUMN email TEXT",
             "ALTER TABLE users ADD COLUMN phone TEXT"
         ];
@@ -58,7 +60,7 @@ export class Database {
     // ========== 文章相关 ==========
     async findAllPosts(tag = null, category = null, source = null, sortBy = 'created_at', order = 'DESC', limit = 100, offset = 0) {
         let { results } = await this.db.prepare(
-            "SELECT id, title, username, tags, category, hot_score, source_name, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes ORDER BY created_at DESC"
+            "SELECT id, title, username, tags, category, hot_score, source_name, summary, ai_summary, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes ORDER BY created_at DESC"
         ).all();
 
         if (tag) {
@@ -89,10 +91,23 @@ export class Database {
         return await this.db.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first();
     }
 
-    async createPost(userId, username, title, content, tags, hotScore = 50, category = 'general', sourceName = '') {
+    async createPost(userId, username, title, content, tags, hotScore = 50, category = 'general', sourceName = '', summary = '') {
+        const result = await this.db.prepare(
+            "INSERT INTO notes (user_id, username, title, content, tags, hot_score, category, source_name, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ).bind(userId, username, title, content, tags, hotScore, category, sourceName, summary).run();
+        return result.meta?.last_row_id || null;
+    }
+
+    async updatePostSummary(id, summary) {
         return await this.db.prepare(
-            "INSERT INTO notes (user_id, username, title, content, tags, hot_score, category, source_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        ).bind(userId, username, title, content, tags, hotScore, category, sourceName).run();
+            "UPDATE notes SET summary = ? WHERE id = ?"
+        ).bind(summary, id).run();
+    }
+
+    async updatePostAISummary(id, aiSummary) {
+        return await this.db.prepare(
+            "UPDATE notes SET ai_summary = ? WHERE id = ?"
+        ).bind(aiSummary, id).run();
     }
 
     async deletePost(id) {
