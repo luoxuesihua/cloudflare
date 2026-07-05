@@ -132,28 +132,101 @@ sources.post('/:id/sync', async (c) => {
     }
 })
 
-// ========== 同步全部动态源 ==========
+// ========== 同步全部动态源（后台异步执行，立即返回） ==========
 sources.post('/sync-all', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
 
-    try {
-        const db = getDb(c)
-        const dynamicSources = await db.findActiveSources()
-        const parsedSources = dynamicSources.map(s => ({
-            url: s.url,
-            name: s.name,
-            category: s.category,
-            hotScore: s.hot_score,
-            lang: s.lang,
-            desc: s.description,
-            urlBackup: JSON.parse(s.url_backup || '[]')
-        }))
-        const result = await collectAllDynamicSources(c.env, parsedSources)
-        return c.json({ success: true, ...result })
-    } catch (e) {
-        return c.json({ success: false, error: e.message, totalCollected: 0 }, 500)
+    // 防止重复触发：检查是否有正在进行的同步任务
+    const runningKey = 'sync_all_status'
+    const currentStatus = await c.env.suyuankv.get(runningKey)
+    if (currentStatus) {
+        try {
+            const status = JSON.parse(currentStatus)
+            if (status.state === 'running') {
+                return c.json({
+                    success: true,
+                    message: '同步任务正在执行中，请勿重复触发',
+                    status
+                })
+            }
+        } catch {}
     }
+
+    // 初始化状态
+    const taskId = crypto.randomUUID()
+    await c.env.suyuankv.put(runningKey, JSON.stringify({
+        taskId,
+        state: 'running',
+        startedAt: new Date().toISOString(),
+        processed: 0,
+        total: 0,
+        collected: 0,
+        logs: []
+    }), { expirationTtl: 3600 }) // 1 小时过期
+
+    const db = getDb(c)
+    const dynamicSources = await db.findActiveSources()
+    const parsedSources = dynamicSources.map(s => ({
+        url: s.url,
+        name: s.name,
+        category: s.category,
+        hotScore: s.hot_score,
+        lang: s.lang,
+        desc: s.description,
+        urlBackup: JSON.parse(s.url_backup || '[]')
+    }))
+
+    // 后台异步执行：利用 Cloudflare Workers 的 waitUntil 延长生命周期
+    c.executionCtx.waitUntil(
+        collectAllDynamicSources(c.env, parsedSources, async (progress) => {
+            // 实时更新进度到 KV
+            const currentRaw = await c.env.suyuankv.get(runningKey)
+            const current = currentRaw ? JSON.parse(currentRaw) : {}
+            await c.env.suyuankv.put(runningKey, JSON.stringify({
+                ...current,
+                processed: progress.processed,
+                total: progress.total,
+                collected: progress.collected
+            }), { expirationTtl: 3600 })
+        }).then(async (result) => {
+            // 标记完成
+            await c.env.suyuankv.put(runningKey, JSON.stringify({
+                taskId,
+                state: 'done',
+                startedAt: new Date().toISOString(), // 这里拿不到原始 startedAt，用现有数据
+                processed: parsedSources.length,
+                total: parsedSources.length,
+                collected: result.totalCollected,
+                logs: result.logs.slice(-20) // 只保留最后 20 条日志
+            }), { expirationTtl: 3600 })
+        }).catch(async (err) => {
+            await c.env.suyuankv.put(runningKey, JSON.stringify({
+                taskId,
+                state: 'error',
+                error: err.message
+            }), { expirationTtl: 3600 })
+        })
+    )
+
+    return c.json({
+        success: true,
+        message: '同步任务已启动，将在后台执行',
+        taskId,
+        totalSources: parsedSources.length,
+        estimatedSeconds: Math.ceil(parsedSources.length / 5) * 5 // 估算：每批 5 个并发约 5 秒
+    })
+})
+
+// ========== 查询同步任务状态 ==========
+sources.get('/sync-all/status', async (c) => {
+    const user = await getUser(c)
+    if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
+
+    const raw = await c.env.suyuankv.get('sync_all_status')
+    if (!raw) return c.json({ state: 'idle' })
+
+    return c.json(JSON.parse(raw))
 })
 
 export default sources

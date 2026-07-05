@@ -598,21 +598,40 @@ export async function collectSingleSource(env, feed) {
 }
 
 /**
- * 同步所有数据库中的动态源
+ * 同步所有数据库中的动态源（支持并发加速 + 进度追踪）
  */
-export async function collectAllDynamicSources(env, dynamicFeeds) {
+export async function collectAllDynamicSources(env, dynamicFeeds, onProgress) {
     const db = new Database(env);
     await db.init();
     let totalCollected = 0;
     const log = [];
+    const CONCURRENCY = 5; // 同时抓取 5 个源
 
-    for (const feed of dynamicFeeds) {
-        const result = await collectSingleSource(env, feed);
-        if (result.logs) log.push(...result.logs);
-        totalCollected += result.collected;
+    for (let i = 0; i < dynamicFeeds.length; i += CONCURRENCY) {
+        const batch = dynamicFeeds.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(
+            batch.map(feed => collectSingleSource(env, feed).catch(err => ({
+                collected: 0,
+                logs: [`⚠ [${feed.category}] ${feed.name}: ${err.message}`]
+            })))
+        );
+
+        for (const result of results) {
+            if (result.logs) log.push(...result.logs);
+            totalCollected += result.collected;
+        }
+
+        // 进度回调（供后台任务使用）
+        if (onProgress) {
+            onProgress({
+                processed: Math.min(i + CONCURRENCY, dynamicFeeds.length),
+                total: dynamicFeeds.length,
+                collected: totalCollected
+            });
+        }
     }
 
-    log.push(`📊 动态源采集完成：共 ${totalCollected} 条`);
+    log.push(`📊 动态源采集完成：${dynamicFeeds.length} 个源，共 ${totalCollected} 条`);
     return { totalCollected, logs: log };
 }
 

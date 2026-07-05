@@ -114,6 +114,9 @@ const sourceFormSaving = ref(false)
 const syncingSourceId = ref(null)
 const syncAllRunning = ref(false)
 const syncResult = ref(null)
+const syncProgress = ref(null)   // { processed, total, collected, state }
+let syncPollTimer = null
+
 const sourceUrlBackupInput = ref('')
 
 const SOURCE_CATEGORIES = [
@@ -440,9 +443,14 @@ async function syncAllSources() {
     alert('没有可同步的源')
     return
   }
-  if (!confirm(`确定要同步全部 ${sources.value.length} 个动态源吗？`)) return
+  if (!confirm(`确定要同步全部 ${sources.value.length} 个动态源吗？\n\n同步将在后台执行，约需 ${Math.ceil(sources.value.length / 5) * 5} 秒`)) return
   syncAllRunning.value = true
   syncResult.value = null
+  syncProgress.value = null
+
+  // 清除旧的轮询定时器
+  if (syncPollTimer) clearInterval(syncPollTimer)
+
   try {
     const res = await fetch('/api/sources/sync-all', {
       method: 'POST',
@@ -450,13 +458,51 @@ async function syncAllSources() {
     })
     const data = await res.json()
     syncResult.value = data
+
     if (data.success) {
-      alert(`全量同步完成，共入库 ${data.totalCollected || 0} 条`)
+      // 后台异步执行，开始轮询进度
+      syncProgress.value = {
+        total: data.totalSources,
+        processed: 0,
+        collected: 0,
+        state: 'running'
+      }
+
+      // 每 2 秒轮询一次进度
+      syncPollTimer = setInterval(async () => {
+        try {
+          const statusRes = await fetch('/api/sources/sync-all/status', {
+            headers: getHeaders()
+          })
+          const status = await statusRes.json()
+          syncProgress.value = status
+
+          if (status.state === 'done') {
+            clearInterval(syncPollTimer)
+            syncPollTimer = null
+            syncAllRunning.value = false
+            syncProgress.value = null
+            alert(`全量同步完成！共入库 ${status.collected || 0} 条`)
+            // 刷新文章列表（如果在文章管理 tab 可以顺便刷新）
+          } else if (status.state === 'error') {
+            clearInterval(syncPollTimer)
+            syncPollTimer = null
+            syncAllRunning.value = false
+            syncProgress.value = null
+            alert(`同步出错: ${status.error || '未知错误'}`)
+          }
+        } catch {
+          // 轮询失败不影响
+        }
+      }, 2000)
     } else {
+      syncAllRunning.value = false
       alert(`同步失败: ${data.error || '未知错误'}`)
     }
-  } catch (e) { alert('网络错误') }
-  finally { syncAllRunning.value = false }
+  } catch (e) {
+    syncAllRunning.value = false
+    alert('网络错误')
+  }
 }
 
 async function changePassword() {
@@ -721,6 +767,11 @@ onMounted(() => {
             <button @click="syncAllSources" class="btn btn-primary btn-sm" :disabled="syncAllRunning || sources.length === 0">
               {{ syncAllRunning ? '同步中...' : '全部同步' }}
             </button>
+            <!-- 进度条 -->
+            <div v-if="syncProgress && syncProgress.state === 'running'" class="sync-progress-bar">
+              <div class="sync-progress-fill" :style="{ width: (syncProgress.processed / syncProgress.total * 100) + '%' }"></div>
+              <span class="sync-progress-text">{{ syncProgress.processed }}/{{ syncProgress.total }} 源，已入库 {{ syncProgress.collected }} 条</span>
+            </div>
             <button @click="openAddSource" class="btn btn-primary btn-sm">+ 添加源</button>
           </div>
         </div>
@@ -975,6 +1026,38 @@ onMounted(() => {
 
 .header-actions {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* 同步进度条 */
+.sync-progress-bar {
+  width: 100%;
+  height: 24px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 4px;
+  border: 1px solid rgba(14,165,233,0.2);
+}
+.sync-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0EA5E9, #8B5CF6);
+  border-radius: 6px;
+  transition: width 0.6s ease;
+  min-width: 2%;
+}
+.sync-progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.7rem;
+  color: #fff;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  white-space: nowrap;
 }
 
 h2 { margin-top: 0; }
