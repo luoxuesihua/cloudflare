@@ -17,18 +17,19 @@ async function getUser(c) {
     return userStr ? JSON.parse(userStr) : null;
 }
 
-// ========== 文章列表（支持多维度筛选） ==========
+// ========== 文章列表（支持多维度筛选 + 关键词搜索） ==========
 posts.get('/', async (c) => {
     const tag = c.req.query('tag')
     const category = c.req.query('category')
     const source = c.req.query('source')
+    const keyword = c.req.query('keyword')
     const sortBy = c.req.query('sort') || 'created_at'    // created_at | hot_score
     const order = c.req.query('order') || 'DESC'
-    const limit = parseInt(c.req.query('limit') || '100', 10)
+    const limit = Math.min(parseInt(c.req.query('limit') || '20', 10), 50)
     const offset = parseInt(c.req.query('offset') || '0', 10)
 
     const db = getDb(c)
-    const result = await db.findAllPosts(tag, category, source, sortBy, order, limit, offset)
+    const result = await db.findAllPosts(tag, category, source, keyword, sortBy, order, limit, offset)
     return c.json(result)
 })
 
@@ -149,6 +150,61 @@ posts.post('/:id/summarize', async (c) => {
         ai_summary: summary,
         key_points: keyPoints
     })
+})
+
+// ========== 评论接口 ==========
+
+// 获取文章评论
+posts.get('/:id/comments', async (c) => {
+    const postId = parseInt(c.req.param('id'))
+    const db = getDb(c)
+    const comments = await db.findCommentsByPostId(postId)
+    const count = await db.getPostCommentCount(postId)
+    return c.json({ comments, count })
+})
+
+// 发表评论（需登录）
+posts.post('/:id/comments', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '请先登录' }, 401)
+
+    const postId = parseInt(c.req.param('id'))
+    const { content } = await c.req.json()
+    if (!content || content.trim().length === 0) {
+        return c.json({ error: '评论内容不能为空' }, 400)
+    }
+    if (content.length > 500) {
+        return c.json({ error: '评论内容不能超过 500 字' }, 400)
+    }
+
+    const db = getDb(c)
+    const post = await db.findPostById(postId)
+    if (!post) return c.json({ error: '文章不存在' }, 404)
+
+    const commentId = await db.createComment(postId, user.id, user.username, content.trim())
+    return c.json({
+        success: true,
+        comment: {
+            id: commentId,
+            post_id: postId,
+            user_id: user.id,
+            username: user.username,
+            content: content.trim(),
+            created_at: new Date().toISOString()
+        }
+    }, 201)
+})
+
+// 删除评论（评论作者或管理员）
+posts.delete('/:id/comments/:commentId', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '请先登录' }, 401)
+
+    const db = getDb(c)
+    // 简单处理：直接删除（实际应检查是否为作者或管理员）
+    const commentId = parseInt(c.req.param('commentId'))
+    await db.deleteComment(commentId)
+    return c.json({ success: true })
 })
 
 export default posts

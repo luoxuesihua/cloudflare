@@ -1,17 +1,24 @@
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const posts = ref([])
 const isLoading = ref(true)
+const isLoadingMore = ref(false)
+const hasMore = ref(true)
+const totalCount = ref(0)
 const route = useRoute()
 const router = useRouter()
+const scrollContainer = ref(null)
 
 // 当前筛选状态
 const currentCategory = ref(route.query.category || '')
 const currentSource = ref('')
 const sortMode = ref('hot_score') // hot_score | created_at
 const currentTag = ref(route.query.tag || '')
+const searchKeyword = ref('')
+
+const PAGE_SIZE = 20
 
 // 分类统计
 const categoryStats = ref({})
@@ -30,7 +37,7 @@ const categories = [
 // 当前选中分类对象
 const activeCategory = computed(() => categories.find(c => c.id === currentCategory.value) || categories[0])
 
-// 新闻源列表（供筛选）
+// 新闻源列表（供筛选，从已加载文章中提取）
 const sources = computed(() => {
   const set = new Set()
   posts.value.forEach(p => {
@@ -41,23 +48,40 @@ const sources = computed(() => {
 })
 
 // ===== 数据获取 =====
-async function fetchPosts() {
-  isLoading.value = true
+async function fetchPosts(append = false) {
+  if (append) {
+    isLoadingMore.value = true
+  } else {
+    isLoading.value = true
+  }
+
   try {
     const params = new URLSearchParams()
     if (currentCategory.value) params.set('category', currentCategory.value)
     if (currentSource.value) params.set('source', currentSource.value)
     if (currentTag.value) params.set('tag', currentTag.value)
+    if (searchKeyword.value.trim()) params.set('keyword', searchKeyword.value.trim())
     params.set('sort', sortMode.value)
-    params.set('limit', '100')
+    params.set('limit', String(PAGE_SIZE))
+    params.set('offset', String(append ? posts.value.length : 0))
 
     const res = await fetch(`/api/posts?${params.toString()}`)
     const data = await res.json()
-    posts.value = data.posts || data
+    const newPosts = data.posts || data
+
+    if (append) {
+      posts.value.push(...newPosts)
+    } else {
+      posts.value = newPosts
+    }
+
+    totalCount.value = data.total || 0
+    hasMore.value = posts.value.length < totalCount.value
   } catch (e) {
     console.error('获取文章失败', e)
   } finally {
     isLoading.value = false
+    isLoadingMore.value = false
   }
 }
 
@@ -77,29 +101,71 @@ function switchCategory(catId) {
   currentCategory.value = catId
   currentSource.value = ''
   currentTag.value = ''
+  searchKeyword.value = ''
+  posts.value = []
+  hasMore.value = true
   router.replace({ query: catId ? { category: catId } : {} })
 }
 
 function toggleSort() {
   sortMode.value = sortMode.value === 'hot_score' ? 'created_at' : 'hot_score'
+  posts.value = []
+  hasMore.value = true
 }
 
 function filterBySource(source) {
   currentSource.value = currentSource.value === source ? '' : source
+  posts.value = []
+  hasMore.value = true
 }
 
 function filterByTag(tag) {
   currentTag.value = tag
   currentCategory.value = ''
+  searchKeyword.value = ''
+  posts.value = []
+  hasMore.value = true
 }
 
 function clearAllFilters() {
   currentCategory.value = ''
   currentSource.value = ''
   currentTag.value = ''
+  searchKeyword.value = ''
   sortMode.value = 'hot_score'
+  posts.value = []
+  hasMore.value = true
   router.replace({ query: {} })
 }
+
+// 搜索防抖
+let searchTimer = null
+function onSearchInput() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    posts.value = []
+    hasMore.value = true
+    fetchPosts()
+  }, 400)
+}
+
+// 无限滚动 - Intersection Observer
+const loadMoreTrigger = ref(null)
+onMounted(() => {
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && hasMore.value && !isLoadingMore.value && !isLoading.value) {
+      fetchPosts(true)
+    }
+  }, { rootMargin: '200px' })
+
+  nextTick(() => {
+    if (loadMoreTrigger.value) {
+      observer.observe(loadMoreTrigger.value)
+    }
+  })
+
+  // 注意： observer 在组件卸载时由 Vue 自动清理
+})
 
 // 工具函数
 function extractSource(username) {
@@ -181,7 +247,7 @@ function timeAgo(dateStr) {
 }
 
 function hasFilter() {
-  return currentCategory.value || currentSource.value || currentTag.value
+  return currentCategory.value || currentSource.value || currentTag.value || searchKeyword.value.trim()
 }
 
 watch([currentCategory, currentSource, currentTag, sortMode], () => {
@@ -225,6 +291,18 @@ onMounted(() => {
         </button>
       </div>
 
+      <!-- 搜索框 -->
+      <div class="search-box">
+        <input
+          v-model="searchKeyword"
+          type="text"
+          placeholder="搜索文章..."
+          @input="onSearchInput"
+          class="search-input"
+        />
+        <span v-if="searchKeyword" class="search-clear" @click="searchKeyword = ''; posts = []; hasMore = true; fetchPosts()">✕</span>
+      </div>
+
       <div class="toolbar-actions">
         <button class="sort-btn" @click="toggleSort" :title="sortMode === 'hot_score' ? '按热度排序' : '按时间排序'">
           <span v-if="sortMode === 'hot_score'">🔥 热度</span>
@@ -232,7 +310,7 @@ onMounted(() => {
         </button>
 
         <div class="source-filter" v-if="sources.length > 0">
-          <select v-model="currentSource" class="source-select">
+          <select v-model="currentSource" @change="filterBySource(currentSource); posts = []; hasMore = true" class="source-select">
             <option value="">📡 全部来源</option>
             <option v-for="s in sources" :key="s" :value="s">{{ s }}</option>
           </select>
@@ -308,6 +386,17 @@ onMounted(() => {
           </div>
         </div>
       </article>
+    </div>
+
+    <!-- 加载更多触发点（Intersection Observer） -->
+    <div ref="loadMoreTrigger" class="load-more-trigger">
+      <div v-if="isLoadingMore" class="loading">
+        <div class="spinner"></div>
+        <p>加载更多...</p>
+      </div>
+      <div v-else-if="!hasMore && posts.length > 0" class="no-more">
+        <p>— 已加载全部 {{ totalCount }} 条文章 —</p>
+      </div>
     </div>
   </div>
 </template>
@@ -406,6 +495,7 @@ onMounted(() => {
   font-weight: 600;
   transition: all 0.2s;
   font-family: inherit;
+  white-space: nowrap;
 }
 .sort-btn:hover { background: rgba(255,255,255,0.06); color: #fff; }
 .source-select {
@@ -421,6 +511,41 @@ onMounted(() => {
   max-width: 160px;
 }
 .source-select:focus { border-color: var(--primary); }
+
+/* 搜索框 */
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-input {
+  padding: 7px 28px 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(15,23,42,0.8);
+  color: #E2E8F0;
+  font-size: 0.82rem;
+  outline: none;
+  font-family: inherit;
+  width: 180px;
+  transition: all 0.3s;
+}
+.search-input::placeholder { color: rgba(255,255,255,0.3); }
+.search-input:focus {
+  border-color: var(--primary);
+  width: 240px;
+  box-shadow: 0 0 12px rgba(14,165,233,0.15);
+}
+.search-clear {
+  position: absolute;
+  right: 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  padding: 2px;
+}
+.search-clear:hover { color: #F87171; }
+
 .clear-btn {
   padding: 6px 12px;
   border-radius: 6px;
@@ -620,6 +745,17 @@ onMounted(() => {
   transition: width 0.5s;
 }
 
+/* 加载更多 */
+.load-more-trigger {
+  text-align: center;
+  padding: 20px 0 40px;
+}
+.no-more {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 10px 0;
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .hero h1 { font-size: 2rem; }
@@ -629,6 +765,9 @@ onMounted(() => {
   .cat-tab { padding: 6px 10px; font-size: 0.78rem; }
   .cat-icon { font-size: 0.85rem; }
   .cat-count { font-size: 0.65rem; padding: 1px 5px; }
+  .search-box { width: 100%; }
+  .search-input { width: 100%; }
+  .search-input:focus { width: 100%; }
   .toolbar-actions { justify-content: flex-end; }
   .news-grid { grid-template-columns: 1fr; gap: 14px; }
   .card-title a { font-size: 0.98rem; }

@@ -36,6 +36,7 @@ export class Database {
       CREATE TABLE IF NOT EXISTS comments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         post_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL DEFAULT 0,
         username TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -67,41 +68,69 @@ export class Database {
             "ALTER TABLE notes ADD COLUMN summary TEXT DEFAULT ''",
             "ALTER TABLE notes ADD COLUMN ai_summary TEXT DEFAULT ''",
             "ALTER TABLE users ADD COLUMN email TEXT",
-            "ALTER TABLE users ADD COLUMN phone TEXT"
+            "ALTER TABLE users ADD COLUMN phone TEXT",
+            "ALTER TABLE comments ADD COLUMN user_id INTEGER DEFAULT 0"
         ];
         for (const sql of alterCols) {
             try { await this.db.prepare(sql).run(); } catch (e) { /* 列已存在 */ }
         }
+
+        // 创建索引以优化查询性能
+        const indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_notes_source ON notes(source_name)",
+            "CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category)",
+            "CREATE INDEX IF NOT EXISTS idx_notes_hot_score ON notes(hot_score DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)"
+        ];
+        for (const sql of indexes) {
+            try { await this.db.prepare(sql).run(); } catch (e) { /* 索引已存在 */ }
+        }
     }
 
     // ========== 文章相关 ==========
-    async findAllPosts(tag = null, category = null, source = null, sortBy = 'created_at', order = 'DESC', limit = 100, offset = 0) {
-        let { results } = await this.db.prepare(
-            "SELECT id, title, username, tags, category, hot_score, source_name, summary, ai_summary, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes ORDER BY created_at DESC"
-        ).all();
+    async findAllPosts(tag = null, category = null, source = null, keyword = null, sortBy = 'created_at', order = 'DESC', limit = 20, offset = 0) {
+        // 构建带搜索条件的 SQL 查询
+        let sql = "SELECT id, title, username, tags, category, hot_score, source_name, summary, ai_summary, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes WHERE 1=1"
+        const bindings = []
 
-        if (tag) {
-            results = results.filter(n => (n.tags || '').split(',').map(t => t.trim()).includes(tag));
+        if (keyword) {
+            sql += " AND (title LIKE ? OR content LIKE ? OR summary LIKE ?)"
+            const kw = `%${keyword}%`
+            bindings.push(kw, kw, kw)
         }
         if (category) {
-            results = results.filter(n => (n.category || 'general') === category);
+            sql += " AND category = ?"
+            bindings.push(category)
         }
         if (source) {
-            results = results.filter(n => {
-                const sn = n.source_name || extractSourceFromUsername(n.username);
-                return sn && sn.includes(source);
-            });
+            sql += " AND (source_name LIKE ? OR username LIKE ?)"
+            const s = `%${source}%`
+            bindings.push(s, s)
         }
 
-        // 按热度排序或时间排序
-        if (sortBy === 'hot_score') {
-            results.sort((a, b) => (b.hot_score || 50) - (a.hot_score || 50));
+        // 排序
+        const sortCol = sortBy === 'hot_score' ? 'hot_score' : 'created_at'
+        sql += ` ORDER BY ${sortCol} ${order === 'ASC' ? 'ASC' : 'DESC'}`
+
+        // 先获取总数
+        const countSql = sql.replace(/SELECT .*? FROM/, 'SELECT COUNT(*) as cnt FROM')
+        const { results: countResults } = await this.db.prepare(countSql).bind(...bindings).all()
+        const total = countResults?.[0]?.cnt || 0
+
+        // 分页
+        sql += " LIMIT ? OFFSET ?"
+        bindings.push(limit, offset)
+
+        const { results } = await this.db.prepare(sql).bind(...bindings).all()
+
+        // 标签过滤（内存过滤，因为 tags 是逗号分隔文本）
+        let filtered = results || []
+        if (tag) {
+            filtered = filtered.filter(n => (n.tags || '').split(',').map(t => t.trim()).includes(tag))
         }
 
-        const total = results.length;
-        const paged = results.slice(offset, offset + limit);
-
-        return { posts: paged, total };
+        return { posts: filtered, total };
     }
 
     async findPostById(id) {
@@ -155,6 +184,32 @@ export class Database {
             ).all();
             return results || [];
         } catch (e) { return []; }
+    }
+
+    // ========== 评论相关 ==========
+    async findCommentsByPostId(postId) {
+        const { results } = await this.db.prepare(
+            "SELECT id, post_id, user_id, username, content, created_at FROM comments WHERE post_id = ? ORDER BY created_at ASC"
+        ).bind(postId).all();
+        return results || [];
+    }
+
+    async createComment(postId, userId, username, content) {
+        const result = await this.db.prepare(
+            "INSERT INTO comments (post_id, user_id, username, content) VALUES (?, ?, ?, ?)"
+        ).bind(postId, userId, username, content).run();
+        return result.meta?.last_row_id || null;
+    }
+
+    async deleteComment(id) {
+        return await this.db.prepare("DELETE FROM comments WHERE id = ?").bind(id).run();
+    }
+
+    async getPostCommentCount(postId) {
+        const row = await this.db.prepare(
+            "SELECT COUNT(*) as count FROM comments WHERE post_id = ?"
+        ).bind(postId).first();
+        return row ? row.count : 0;
     }
 
     // ========== 用户相关 ==========

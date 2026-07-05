@@ -1,6 +1,8 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const route = useRoute()
 const post = ref(null)
@@ -9,13 +11,37 @@ const error = ref('')
 const aiKeyPoints = ref(null)
 const isLoadingAI = ref(false)
 
+// 评论相关
+const comments = ref([])
+const commentCount = ref(0)
+const newComment = ref('')
+const isSubmittingComment = ref(false)
+
+const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+
+// 配置 marked
+marked.setOptions({
+  breaks: true,
+  gfm: true
+})
+
+function renderMarkdown(text) {
+  if (!text) return ''
+  const raw = marked.parse(text)
+  return DOMPurify.sanitize(raw, {
+    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr', 'strong', 'em', 'a', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'del', 'sup', 'sub'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class'],
+    ADD_ATTR: ['target']
+  })
+}
+
 onMounted(async () => {
   try {
     const res = await fetch(`/api/posts/${route.params.id}`)
     if (!res.ok) throw new Error('文章不存在')
     post.value = await res.json()
-    // 读取时尝试获取 AI 要点
     fetchAISummary()
+    fetchComments()
   } catch (e) {
     error.value = e.message
   } finally {
@@ -24,7 +50,6 @@ onMounted(async () => {
 })
 
 async function fetchAISummary() {
-  // 如果已有 ai_summary 且是机器采集的文章，尝试获取要点
   const token = localStorage.getItem('token')
   if (!token) return
 
@@ -47,22 +72,52 @@ async function fetchAISummary() {
   finally { isLoadingAI.value = false }
 }
 
-function renderMarkdown(text) {
-  if (!text) return ''
-  let html = text
-  html = html.replace(/^---$/gm, '<hr>')
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
-  html = html.replace(/\n\n/g, '</p><p>')
-  html = '<p>' + html + '</p>'
-  return html
+// 评论相关方法
+async function fetchComments() {
+  try {
+    const res = await fetch(`/api/posts/${route.params.id}/comments`)
+    if (res.ok) {
+      const data = await res.json()
+      comments.value = data.comments || []
+      commentCount.value = data.count || 0
+    }
+  } catch { /* silent */ }
+}
+
+async function submitComment() {
+  if (!newComment.value.trim() || isSubmittingComment.value) return
+  const token = localStorage.getItem('token')
+  if (!token) return
+
+  isSubmittingComment.value = true
+  try {
+    const res = await fetch(`/api/posts/${route.params.id}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content: newComment.value.trim() })
+    })
+    if (res.ok) {
+      const data = await res.json()
+      comments.value.push(data.comment)
+      commentCount.value++
+      newComment.value = ''
+    }
+  } catch { /* silent */ }
+  finally { isSubmittingComment.value = false }
+}
+
+function commentTimeAgo(dateStr) {
+  if (!dateStr) return ''
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diff = Math.floor((now - then) / 1000)
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
+  return new Date(dateStr).toLocaleDateString('zh-CN')
 }
 </script>
 
@@ -108,6 +163,51 @@ function renderMarkdown(text) {
       </div>
 
       <div class="markdown-body" v-html="renderMarkdown(post.content)"></div>
+      <hr class="divider" />
+
+      <!-- 评论区 -->
+      <div class="comments-section">
+        <h3 class="comments-title">💬 评论 ({{ commentCount }})</h3>
+
+        <!-- 评论输入框 -->
+        <div v-if="isLoggedIn" class="comment-form">
+          <textarea
+            v-model="newComment"
+            placeholder="写下你的评论..."
+            maxlength="500"
+            rows="3"
+            class="comment-textarea"
+          ></textarea>
+          <div class="comment-form-footer">
+            <span class="comment-count-hint">{{ newComment.length }}/500</span>
+            <button
+              @click="submitComment"
+              :disabled="!newComment.trim() || isSubmittingComment"
+              class="comment-submit-btn"
+            >
+              {{ isSubmittingComment ? '发送中...' : '发表评论' }}
+            </button>
+          </div>
+        </div>
+        <div v-else class="comment-login-hint">
+          <RouterLink to="/login">登录</RouterLink> 后参与评论
+        </div>
+
+        <!-- 评论列表 -->
+        <div v-if="comments.length > 0" class="comment-list">
+          <div v-for="comment in comments" :key="comment.id" class="comment-item">
+            <div class="comment-header">
+              <span class="comment-user">{{ comment.username }}</span>
+              <span class="comment-time">{{ commentTimeAgo(comment.created_at) }}</span>
+            </div>
+            <p class="comment-content">{{ comment.content }}</p>
+          </div>
+        </div>
+        <div v-else-if="commentCount === 0" class="comment-empty">
+          暂无评论，来抢沙发吧~
+        </div>
+      </div>
+
       <hr class="divider" />
 
       <nav class="post-nav">
@@ -266,6 +366,133 @@ function renderMarkdown(text) {
 
 .post-nav a { color: var(--text-muted); }
 .post-nav a:hover { color: var(--primary); }
+
+/* ===== 评论区 ===== */
+.comments-section {
+  margin-top: 10px;
+}
+.comments-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: #E2E8F0;
+}
+
+/* 评论输入 */
+.comment-form {
+  margin-bottom: 24px;
+}
+.comment-textarea {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(15,23,42,0.6);
+  color: #E2E8F0;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.comment-textarea:focus {
+  border-color: var(--primary);
+}
+.comment-textarea::placeholder { color: rgba(255,255,255,0.25); }
+.comment-form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+.comment-count-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+}
+.comment-submit-btn {
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #0EA5E9, #2563EB);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.comment-submit-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.comment-submit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 登录提示 */
+.comment-login-hint {
+  text-align: center;
+  padding: 20px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px dashed rgba(255,255,255,0.08);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin-bottom: 20px;
+}
+.comment-login-hint a {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* 评论列表 */
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.comment-item {
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  transition: border-color 0.2s;
+}
+.comment-item:hover {
+  border-color: rgba(255,255,255,0.1);
+}
+.comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.comment-user {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--primary);
+}
+.comment-time {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+}
+.comment-content {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #CBD5E1;
+  margin: 0;
+  word-wrap: break-word;
+}
+.comment-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  padding: 30px 0;
+}
 
 .loading, .error { text-align: center; padding: 60px 0; color: var(--text-muted); }
 .error { color: var(--danger); }
