@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { dedupedFetch, fetchWithSWR, getSessionCache, setSessionCache } from '../utils/api'
 
 const posts = ref([])
-const isLoading = ref(true)
+const isLoading = ref(true)       // 首次无缓存时为 true，有缓存数据后不再显示 loading
+const isSilentRefresh = ref(false) // 静默后台刷新，不显示 loading UI
 const isLoadingMore = ref(false)
 const hasMore = ref(true)
 const totalCount = ref(0)
@@ -23,6 +24,71 @@ const PAGE_SIZE = 20
 
 // 分类统计
 const categoryStats = ref({})
+
+// ===== 定期刷新定时器 =====
+const REFRESH_INTERVAL = 2 * 60 * 1000 // 2 分钟
+let refreshTimer = null
+let visibilityHandler = null
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  refreshTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      silentRefresh()
+    }
+  }, REFRESH_INTERVAL)
+  
+  // 页面重新可见时也刷新一次
+  visibilityHandler = () => {
+    if (document.visibilityState === 'visible') {
+      silentRefresh()
+    }
+  }
+  document.addEventListener('visibilitychange', visibilityHandler)
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+  if (visibilityHandler) {
+    document.removeEventListener('visibilitychange', visibilityHandler)
+    visibilityHandler = null
+  }
+}
+
+// 静默刷新当前页（不显示 loading，保留现有数据）
+async function silentRefresh() {
+  if (isSilentRefresh.value) return // 已在刷新中
+  isSilentRefresh.value = true
+  try {
+    // 只刷新首页（无筛选条件时的数据）
+    if (!currentCategory.value && !currentSource.value && !currentTag.value && !searchKeyword.value.trim() && sortMode.value === 'created_at') {
+      const params = new URLSearchParams()
+      params.set('sort', 'created_at')
+      params.set('limit', String(PAGE_SIZE))
+      params.set('offset', '0')
+      const url = `/api/posts?${params.toString()}`
+      const res = await dedupedFetch(url)
+      const data = await res.json()
+      const newPosts = data.posts || data
+      
+      // 用新数据无缝替换
+      posts.value = newPosts
+      totalCount.value = data.total || 0
+      hasMore.value = posts.value.length < totalCount.value
+      // 更新缓存
+      setSessionCache('home_posts_default', { posts: newPosts, total: data.total || 0 })
+    }
+    // 顺便刷新统计
+    fetchStats({ silent: true })
+  } catch {
+    // 静默失败
+  } finally {
+    isSilentRefresh.value = false
+  }
+}
 
 // ===== 分类定义 =====
 const categories = [
@@ -62,7 +128,12 @@ async function fetchPosts(append = false) {
   if (append) {
     isLoadingMore.value = true
   } else {
-    isLoading.value = true
+    // 非追加时：如果没有缓存数据才显示 loading
+    if (posts.value.length === 0) {
+      isLoading.value = true
+    } else {
+      isSilentRefresh.value = true
+    }
   }
 
   try {
@@ -88,6 +159,11 @@ async function fetchPosts(append = false) {
 
     totalCount.value = data.total || 0
     hasMore.value = posts.value.length < totalCount.value
+
+    // 无筛选条件时缓存首页数据，下次打开秒开
+    if (!append && !currentCategory.value && !currentSource.value && !currentTag.value && !searchKeyword.value.trim() && sortMode.value === 'created_at') {
+      setSessionCache('home_posts_default', { posts: newPosts, total: data.total || 0 })
+    }
   } catch (e) {
     // 忽略 AbortError
     if (e.name === 'AbortError') return
@@ -95,27 +171,48 @@ async function fetchPosts(append = false) {
   } finally {
     isLoading.value = false
     isLoadingMore.value = false
+    isSilentRefresh.value = false
   }
 }
 
+// 初始化：先展示缓存数据（秒开），再后台拉取最新
+async function initPosts() {
+  // 1. 尝试读取缓存
+  const cached = getSessionCache('home_posts_default', 300000) // 5min TTL
+  if (cached && cached.posts && cached.posts.length > 0) {
+    posts.value = cached.posts
+    totalCount.value = cached.total || 0
+    hasMore.value = posts.value.length < totalCount.value
+    isLoading.value = false // 有缓存就不显示 loading
+  }
+
+  // 2. 后台拉取最新数据（SWR）
+  await fetchPosts()
+}
+
 // 使用 SWR 模式加载统计：先展示缓存，后台刷新
-async function fetchStats() {
+async function fetchStats({ silent = false } = {}) {
   const cacheKey = 'posts_stats'
   
   try {
     await fetchWithSWR('/api/posts/stats', cacheKey, {
       ttlMs: 300000, // 5 分钟缓存
       onCacheData(data) {
-        applyStatsData(data)
+        // 有缓存时立即填充
+        if (!categoryStats.value['']) {
+          applyStatsData(data)
+        }
       },
       onFreshData(data) {
         applyStatsData(data)
       }
     })
   } catch {
-    // 网络失败时尝试只用缓存
-    const cached = getSessionCache(cacheKey, 300000)
-    if (cached) applyStatsData(cached)
+    // 网络失败时尝试只用缓存（非 silent 模式已展示过则不重复）
+    if (!silent) {
+      const cached = getSessionCache(cacheKey, 300000)
+      if (cached) applyStatsData(cached)
+    }
   }
 }
 
@@ -165,7 +262,17 @@ function clearAllFilters() {
   currentTag.value = ''
   searchKeyword.value = ''
   sortMode.value = 'created_at'
-  posts.value = []
+  
+  // 清除筛选回到首页时，优先展示缓存数据（秒开）
+  const cached = getSessionCache('home_posts_default', 300000)
+  if (cached && cached.posts && cached.posts.length > 0) {
+    posts.value = cached.posts
+    totalCount.value = cached.total || 0
+    hasMore.value = posts.value.length < totalCount.value
+    isLoading.value = false
+  } else {
+    posts.value = []
+  }
   hasMore.value = true
   router.replace({ query: {} })
 }
@@ -197,6 +304,11 @@ onMounted(() => {
       observer.observe(loadMoreTrigger.value)
     }
   })
+
+  // 初始化数据 + 启动定期刷新
+  initPosts()
+  fetchStats()
+  startAutoRefresh()
 })
 
 onUnmounted(() => {
@@ -204,6 +316,8 @@ onUnmounted(() => {
   if (abortController) {
     abortController.abort()
   }
+  // 清理定期刷新
+  stopAutoRefresh()
   // 清理 observer
   if (observer) {
     observer.disconnect()
@@ -295,11 +409,6 @@ function hasFilter() {
 
 watch([currentCategory, currentSource, currentTag, sortMode], () => {
   fetchPosts()
-})
-
-onMounted(() => {
-  fetchPosts()
-  fetchStats()
 })
 </script>
 
