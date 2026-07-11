@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useAuth } from '../composables/useAuth'
+import { dedupedFetch } from '../utils/api'
 
 const route = useRoute()
 const auth = useAuth()
@@ -53,7 +54,7 @@ async function recordReadingHistory() {
 
 onMounted(async () => {
   try {
-    const res = await fetch(`/api/posts/${route.params.id}`)
+    const res = await dedupedFetch(`/api/posts/${route.params.id}`)
     if (!res.ok) throw new Error('文章不存在')
     post.value = await res.json()
     fetchAISummary()
@@ -95,7 +96,7 @@ async function fetchAISummary() {
 // 评论相关方法
 async function fetchComments() {
   try {
-    const res = await fetch(`/api/posts/${route.params.id}/comments`)
+    const res = await dedupedFetch(`/api/posts/${route.params.id}/comments`)
     if (res.ok) {
       const data = await res.json()
       comments.value = data.comments || []

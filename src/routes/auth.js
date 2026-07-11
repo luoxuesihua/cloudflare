@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { generateCode, sendVerificationCode } from '../email.js'
+import { withCache, CACHE_TTL } from '../cache.js'
 
 const auth = new Hono()
 
@@ -356,8 +357,8 @@ auth.delete('/users/:id', async (c) => {
 
 // ========== 用户偏好设置 ==========
 
-// 获取可用分类列表（用于兴趣标签选择）
-auth.get('/categories', async (c) => {
+// 获取可用分类列表（用于兴趣标签选择）— 缓存 10 分钟，纯静态数据
+auth.get('/categories', withCache(CACHE_TTL.CATEGORIES, async (c) => {
     // 无需登录，公开接口
     return c.json([
         { id: 'general', name: '综合资讯', icon: 'globe' },
@@ -367,7 +368,7 @@ auth.get('/categories', async (c) => {
         { id: 'product', name: '产品设计', icon: 'layout' },
         { id: 'biz', name: '财经商业', icon: 'trending-up' }
     ])
-})
+}))
 
 // 更新用户兴趣标签
 auth.put('/interests', async (c) => {

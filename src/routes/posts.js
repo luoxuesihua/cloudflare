@@ -2,7 +2,14 @@ import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { collectNews, collectHotSearch } from '../services/collector.js'
 import { generateAISummary, extractKeyPoints } from '../services/summarizer.js'
+import { withCache, CACHE_TTL, invalidateKVCacheByTag, CACHE_TAGS } from '../cache.js'
 
+// 缓存失效辅助：写操作后使文章列表/统计/详情缓存失效
+function invalidatePostCaches(c, env) {
+  // 通过递增版本号失效 KV 缓存
+  invalidateKVCacheByTag(env, CACHE_TAGS.POSTS, c.executionCtx)
+  invalidateKVCacheByTag(env, CACHE_TAGS.POST_DETAIL, c.executionCtx)
+}
 
 const posts = new Hono()
 
@@ -40,7 +47,8 @@ function sanitizeHtml(text) {
 }
 
 // ========== 文章列表（支持多维度筛选 + 关键词搜索 + 个性化推荐） ==========
-posts.get('/', async (c) => {
+// 缓存 2 分钟 — 实时性要求低，数据按 Cron 定时更新
+posts.get('/', withCache(CACHE_TTL.POSTS_LIST, async (c) => {
     const tag = c.req.query('tag')
     const category = c.req.query('category')
     const source = c.req.query('source')
@@ -61,23 +69,23 @@ posts.get('/', async (c) => {
     const db = getDb(c)
     const result = await db.findAllPosts(tag, category, source, keyword, safeSortBy, safeOrder, limit, offset, userInterests)
     return c.json(result)
-})
+}))
 
-// 分类统计
-posts.get('/stats', async (c) => {
+// 分类统计 — 缓存 5 分钟，变化极慢
+posts.get('/stats', withCache(CACHE_TTL.STATS, async (c) => {
     const db = getDb(c)
     const stats = await db.getCategoryStats()
     return c.json(stats)
-})
+}))
 
-// 获取单篇文章
-posts.get('/:id', async (c) => {
+// 获取单篇文章 — 缓存 5 分钟，文章发布后很少修改
+posts.get('/:id', withCache(CACHE_TTL.POST_DETAIL, async (c) => {
     const id = c.req.param('id')
     const db = getDb(c)
     const post = await db.findPostById(id)
     if (!post) return c.json({ error: '文章不存在' }, 404)
     return c.json(post)
-})
+}))
 
 // 创建文章
 posts.post('/', async (c) => {
@@ -109,6 +117,7 @@ posts.post('/', async (c) => {
     } catch { /* 提取失败不影响主流程 */ }
 
     await db.createPost(user.id, user.username, title, content, tags || '', 50, category || 'general', '', summary)
+    invalidatePostCaches(c, c.env)
     return c.json({ success: true }, 201)
 })
 
@@ -120,6 +129,7 @@ posts.delete('/:id', async (c) => {
     const id = c.req.param('id')
     const db = getDb(c)
     await db.deletePost(id)
+    invalidatePostCaches(c, c.env)
     return c.json({ success: true })
 })
 
@@ -135,6 +145,7 @@ posts.post('/bulk-delete', async (c) => {
 
     const db = getDb(c)
     await db.deletePostsByIds(ids)
+    invalidatePostCaches(c, c.env)
     return c.json({ success: true, deleted: ids.length })
 })
 
@@ -184,14 +195,14 @@ posts.post('/:id/summarize', async (c) => {
 
 // ========== 评论接口 ==========
 
-// 获取文章评论
-posts.get('/:id/comments', async (c) => {
+// 获取文章评论 — 缓存 1 分钟
+posts.get('/:id/comments', withCache(CACHE_TTL.COMMENTS, async (c) => {
     const postId = parseInt(c.req.param('id'))
     const db = getDb(c)
     const comments = await db.findCommentsByPostId(postId)
     const count = await db.getPostCommentCount(postId)
     return c.json({ comments, count })
-})
+}))
 
 // 发表评论（需登录）
 posts.post('/:id/comments', async (c) => {
@@ -215,6 +226,7 @@ posts.post('/:id/comments', async (c) => {
     if (!post) return c.json({ error: '文章不存在' }, 404)
 
     const commentId = await db.createComment(postId, user.id, user.username, sanitizedContent)
+    invalidateKVCacheByTag(c.env, CACHE_TAGS.COMMENTS, c.executionCtx)
     return c.json({
         success: true,
         comment: {
@@ -245,6 +257,7 @@ posts.delete('/:id/comments/:commentId', async (c) => {
     }
 
     await db.deleteComment(commentId)
+    invalidateKVCacheByTag(c.env, CACHE_TAGS.COMMENTS, c.executionCtx)
     return c.json({ success: true })
 })
 

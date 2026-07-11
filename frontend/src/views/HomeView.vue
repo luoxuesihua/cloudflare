@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { dedupedFetch, fetchWithSWR, getSessionCache, setSessionCache } from '../utils/api'
 
 const posts = ref([])
 const isLoading = ref(true)
@@ -48,7 +49,16 @@ const sources = computed(() => {
 })
 
 // ===== 数据获取 =====
+// AbortController 防止快速切换筛选时的竞态条件
+let abortController = null
+
 async function fetchPosts(append = false) {
+  // 取消上一次未完成的请求
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+
   if (append) {
     isLoadingMore.value = true
   } else {
@@ -65,7 +75,8 @@ async function fetchPosts(append = false) {
     params.set('limit', String(PAGE_SIZE))
     params.set('offset', String(append ? posts.value.length : 0))
 
-    const res = await fetch(`/api/posts?${params.toString()}`)
+    const url = `/api/posts?${params.toString()}`
+    const res = await dedupedFetch(url, { signal: abortController.signal })
     const data = await res.json()
     const newPosts = data.posts || data
 
@@ -78,6 +89,8 @@ async function fetchPosts(append = false) {
     totalCount.value = data.total || 0
     hasMore.value = posts.value.length < totalCount.value
   } catch (e) {
+    // 忽略 AbortError
+    if (e.name === 'AbortError') return
     console.error('获取文章失败', e)
   } finally {
     isLoading.value = false
@@ -85,16 +98,35 @@ async function fetchPosts(append = false) {
   }
 }
 
+// 使用 SWR 模式加载统计：先展示缓存，后台刷新
 async function fetchStats() {
+  const cacheKey = 'posts_stats'
+  
   try {
-    const res = await fetch('/api/posts/stats')
-    const data = await res.json()
-    const map = {}
-    let total = 0
+    await fetchWithSWR('/api/posts/stats', cacheKey, {
+      ttlMs: 300000, // 5 分钟缓存
+      onCacheData(data) {
+        applyStatsData(data)
+      },
+      onFreshData(data) {
+        applyStatsData(data)
+      }
+    })
+  } catch {
+    // 网络失败时尝试只用缓存
+    const cached = getSessionCache(cacheKey, 300000)
+    if (cached) applyStatsData(cached)
+  }
+}
+
+function applyStatsData(data) {
+  const map = {}
+  let total = 0
+  if (Array.isArray(data)) {
     data.forEach(d => { map[d.category] = d.count; total += d.count })
-    map[''] = total
-    categoryStats.value = map
-  } catch { /* silent */ }
+  }
+  map[''] = total
+  categoryStats.value = map
 }
 
 function switchCategory(catId) {
@@ -151,8 +183,10 @@ function onSearchInput() {
 
 // 无限滚动 - Intersection Observer
 const loadMoreTrigger = ref(null)
+let observer = null
+
 onMounted(() => {
-  const observer = new IntersectionObserver((entries) => {
+  observer = new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting && hasMore.value && !isLoadingMore.value && !isLoading.value) {
       fetchPosts(true)
     }
@@ -163,8 +197,17 @@ onMounted(() => {
       observer.observe(loadMoreTrigger.value)
     }
   })
+})
 
-  // 注意： observer 在组件卸载时由 Vue 自动清理
+onUnmounted(() => {
+  // 取消正在进行的请求
+  if (abortController) {
+    abortController.abort()
+  }
+  // 清理 observer
+  if (observer) {
+    observer.disconnect()
+  }
 })
 
 // 工具函数

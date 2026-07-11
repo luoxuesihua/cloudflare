@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { collectSingleSource, collectAllDynamicSources, ALL_FEEDS } from '../services/collector.js'
+import { withCache, CACHE_TTL, invalidateKVCacheByTag, CACHE_TAGS } from '../cache.js'
 
 const sources = new Hono()
 
@@ -16,6 +17,7 @@ async function getUser(c) {
 }
 
 // ========== 获取所有源（首次自动种子化预设源） ==========
+// 注：此接口仅管理员访问，不缓存（避免 auth 信息泄漏）
 sources.get('/', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
@@ -60,6 +62,7 @@ sources.post('/', async (c) => {
 
     const db = getDb(c)
     const id = await db.createSource({ url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder })
+    invalidateKVCacheByTag(c.env, CACHE_TAGS.POSTS, c.executionCtx)
     return c.json({ success: true, id }, 201)
 })
 
