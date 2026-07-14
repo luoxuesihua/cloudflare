@@ -11,6 +11,8 @@ command = "cd frontend && npm install && npm run build"
 directory = "./frontend/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# 仅 /api/* 优先经过 Worker；其余静态资源/SPA 路由直接由 Assets 处理，不触发 Worker
+run_worker_first = ["/api/*"]
 
 # D1 数据库绑定
 [[d1_databases]]

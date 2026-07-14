@@ -10,9 +10,11 @@
 - **定时任务**：`triggers.crons` 每 4 小时采集 RSS 新闻，每 30 分钟采集热搜
 - **安全特性**：CSP/HSTS/X-Frame-Options 等安全头（applySecurityHeaders）、CORS 白名单、CSRF Token（基于 KV）、IP 限流、SQL 参数白名单、XSS 转义
 
-## 已知架构问题
+## 已知架构问题（已修复）
 
-- `src/index.js:229-233` 全局中间件对每个请求（含 SPA 静态页面）都执行 `db.init()`，里面包含大量 D1 建表/ALTER/索引操作，性能差。建议改为只在首次部署或 scheduled 任务执行。
+- **`db.init()` 每请求执行问题已修复（2026-07-14）**：原全局中间件 `app.use('*', db.init)` 让每个请求都跑 18 条 D1 建表/ALTER/索引语句。现已在 `src/db.js` 用模块级 `schemaInitPromise` 记忆化（每个 isolate 仅执行一次），并把初始化中间件从全局收紧为 `app.use('/api/*', ...)`，SPA 静态路由不再触发 DB。
+- **首页性能优化已落地（2026-07-14）**：① `db.init()` 记忆化 + 仅限 `/api/*`；② 匿名用户不再页面加载时请求 CSRF Token，改为注册/登录写操作前惰性获取（RegisterView 写前 `await auth.refreshCsrf()`）；③ 字体 `@import` 改为 `index.html` 的 preconnect+stylesheet；④ `vite.config.js` 增加 `manualChunks` 拆出 vue vendor chunk，`wrangler.toml` 加 `run_worker_first = ["/api/*"]`；⑤ `findAllPosts` 用 `COUNT(*) OVER()` 合并分页+总数查询，省一次 D1 查询。
+- 注意：`collector.js` 内部仍直接调用 `db.init()`，因记忆化后同样只跑一次，无需改动。
 
 ## Cloudflare Workers Static Assets 关键行为（重要）
 

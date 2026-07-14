@@ -226,7 +226,9 @@ app.use('/api/*', async (c, next) => {
 
 app.use('*', rateLimit)
 app.use('*', csrfProtection)  // CSRF 保护
-app.use('*', async (c, next) => {
+// 仅在 API 路由确保 DB schema 就绪（schema 初始化已在 db.js 内记忆化，每个 isolate 仅执行一次）
+// SPA 静态页面 / 404 兜底无需访问数据库，避免无谓的 D1 往返
+app.use('/api/*', async (c, next) => {
   const db = new Database(c.env)
   await db.init()
   await next()
