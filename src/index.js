@@ -252,19 +252,21 @@ app.all('*', async (c) => {
     return notFound()
   }
 
+  // ASSETS.fetch 返回的 Response headers 是 immutable，必须先创建副本才能修改
+  const secured = new Response(response.body, response)
+
   // 静态资源缓存策略
   if (url.pathname.startsWith('/assets/')) {
     // Vite 构建的资源文件带有 hash，可长期缓存
-    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+    secured.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   } else if (isStaticAssetPath(url.pathname)) {
     // 其他静态文件缓存 1 天
-    response.headers.set('Cache-Control', 'public, max-age=86400')
+    secured.headers.set('Cache-Control', 'public, max-age=86400')
   } else {
     // SPA 页面入口不缓存（确保用户获取最新版本）
-    response.headers.set('Cache-Control', 'no-cache')
+    secured.headers.set('Cache-Control', 'no-cache')
   }
 
-  const secured = new Response(response.body, response)
   applySecurityHeaders(secured.headers)
   return secured
 })
