@@ -1,3 +1,5 @@
+import { detectCategory } from './services/classifier.js';
+
 // schema 初始化记忆化：D1 schema 是持久化的，幂等操作只需在整个 isolate 生命周期内执行一次
 // 避免每个请求（含首页每个 API 调用）都白白发起 18 条 CREATE/ALTER/INDEX 语句
 let schemaInitPromise = null
@@ -141,6 +143,29 @@ export class Database {
             }
         } catch (e) {
             console.warn('[db] source_name 回填失败:', e.message);
+        }
+
+        // 一次性回填：自动识别并修正历史存量综合资讯文章的真实分类
+        try {
+            const reclassified = await this.env.suyuankv.get('migration:reclassify_general_posts_v1');
+            if (!reclassified) {
+                const { results } = await this.db.prepare(
+                    "SELECT id, title, content, summary FROM notes WHERE category = 'general' ORDER BY id DESC LIMIT 500"
+                ).all();
+                if (results && results.length > 0) {
+                    for (const post of results) {
+                        const detected = detectCategory(post.title, post.summary || post.content || '', 'general');
+                        if (detected !== 'general') {
+                            await this.db.prepare(
+                                "UPDATE notes SET category = ? WHERE id = ?"
+                            ).bind(detected, post.id).run();
+                        }
+                    }
+                }
+                await this.env.suyuankv.put('migration:reclassify_general_posts_v1', '1');
+            }
+        } catch (e) {
+            console.warn('[db] 历史文章智能重分类失败:', e.message);
         }
     }
 

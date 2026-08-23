@@ -5,13 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>万象资讯</title>
-    <!-- 字体：预连接 + 并行加载，避免 CSS @import 阻塞渲染 -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Fira+Code:wght@400;500&display=swap"
-    />
+    <!-- 性能优化：采用原生操作系统字体栈，杜绝外链字体引起的白屏阻塞与网络延迟 -->
   </head>
   <body>
     <div id="app"></div>

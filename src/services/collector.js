@@ -5,6 +5,7 @@
  * 扩展至 40+ 源，覆盖 6 大分类：综合、AI、编程、运维、产品、财经
  */
 import { Database } from '../db.js';
+import { detectCategory } from './classifier.js';
 
 // ==================== 6 大分类定义 ====================
 const CATEGORIES = {
@@ -18,7 +19,7 @@ const CATEGORIES = {
 
 // ==================== 30+ 新闻源定义 ====================
 
-// [综合资讯] - 多平台热榜类 (TrendRadar 风格)
+// [综合资讯] - 多平台热榜与科技资讯
 const FEEDS_GENERAL = [
   {
     url: 'https://www.solidot.org/index.rss',
@@ -51,12 +52,6 @@ const FEEDS_GENERAL = [
     desc: '技术实践与架构'
   },
   {
-    url: 'https://rsshub.moeyy.cn/juejin/trending/all/weekly',
-    name: '掘金热榜', category: 'general', hotScore: 82, lang: 'zh',
-    desc: '开发者社区周榜',
-    urlBackup: ['https://rsshub.rss.geek.zone/juejin/trending/all/weekly', 'https://rsshub.app/juejin/trending/all/weekly']
-  },
-  {
     url: 'https://www.huxiu.com/rss/0.xml',
     name: '虎嗅网', category: 'general', hotScore: 82, lang: 'zh',
     desc: '科技商业观察'
@@ -72,18 +67,13 @@ const FEEDS_GENERAL = [
     desc: 'IT资讯门户'
   },
   {
-    url: 'https://www.leiphone.com/feed',
-    name: '雷锋网', category: 'general', hotScore: 75, lang: 'zh',
-    desc: '智能科技媒体'
-  },
-  {
     url: 'https://www.pingwest.com/feed',
     name: '品玩', category: 'general', hotScore: 72, lang: 'zh',
     desc: '科技媒体与创新报道'
   },
 ];
 
-// [AI 前沿] - 大模型、人工智能
+// [AI 前沿] - 大模型、人工智能、智能体
 const FEEDS_AI = [
   {
     url: 'https://www.jiqizhixin.com/rss',
@@ -96,51 +86,45 @@ const FEEDS_AI = [
     desc: 'AI 科技媒体'
   },
   {
+    url: 'https://zhidx.com/feed',
+    name: '智东西', category: 'ai', hotScore: 82, lang: 'zh',
+    desc: '智能产业新媒体'
+  },
+  {
     url: 'https://rsshub.app/36kr/motif/3276897824862212',
     name: '36氪 AI', category: 'ai', hotScore: 80, lang: 'zh',
     desc: 'AI 产业报道',
-    urlBackup: ['https://rsshub.moeyy.cn/36kr/motif/3276897824862212', 'https://rsshub.pseudoyu.com/36kr/motif/3276897824862212', 'https://rsshub.wheremylife.cn/36kr/motif/3276897824862212']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/36kr/motif/3276897824862212',
+      'https://rsshub.rsshub.net/36kr/motif/3276897824862212',
+      'https://hub.slarker.me/36kr/motif/3276897824862212',
+      'https://rsshub.pseudoyu.com/36kr/motif/3276897824862212'
+    ]
   },
   {
     url: 'https://rsshub.app/jiqizhixin/categories/1',
     name: '机器之心精选', category: 'ai', hotScore: 78, lang: 'zh',
     desc: 'AI 精选文章',
-    urlBackup: ['https://rsshub.moeyy.cn/jiqizhixin/categories/1', 'https://rsshub.pseudoyu.com/jiqizhixin/categories/1', 'https://rsshub.wheremylife.cn/jiqizhixin/categories/1']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/jiqizhixin/categories/1',
+      'https://rsshub.rsshub.net/jiqizhixin/categories/1',
+      'https://hub.slarker.me/jiqizhixin/categories/1'
+    ]
   },
   {
     url: 'https://rsshub.app/huggingface/daily-papers',
     name: 'HuggingFace 日报', category: 'ai', hotScore: 90, lang: 'zh',
     desc: 'AI 论文日报',
-    urlBackup: ['https://rsshub.moeyy.cn/huggingface/daily-papers', 'https://rsshub.pseudoyu.com/huggingface/daily-papers', 'https://rsshub.wheremylife.cn/huggingface/daily-papers']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/huggingface/daily-papers',
+      'https://rsshub.rsshub.net/huggingface/daily-papers',
+      'https://hub.slarker.me/huggingface/daily-papers'
+    ]
   },
 ];
 
 // [编程开发] 
 const FEEDS_DEV = [
-  {
-    url: 'https://rsshub.app/juejin/category/frontend',
-    name: '掘金前端', category: 'dev', hotScore: 75, lang: 'zh',
-    desc: '前端技术文章',
-    urlBackup: ['https://rsshub.moeyy.cn/juejin/category/frontend', 'https://rsshub.pseudoyu.com/juejin/category/frontend', 'https://rsshub.wheremylife.cn/juejin/category/frontend']
-  },
-  {
-    url: 'https://rsshub.app/juejin/category/backend',
-    name: '掘金后端', category: 'dev', hotScore: 75, lang: 'zh',
-    desc: '后端技术文章',
-    urlBackup: ['https://rsshub.moeyy.cn/juejin/category/backend', 'https://rsshub.pseudoyu.com/juejin/category/backend', 'https://rsshub.wheremylife.cn/juejin/category/backend']
-  },
-  {
-    url: 'https://rsshub.app/v2ex/topics/hot',
-    name: 'V2EX 热门', category: 'dev', hotScore: 78, lang: 'zh',
-    desc: '创意工作者社区',
-    urlBackup: ['https://rsshub.moeyy.cn/v2ex/topics/hot', 'https://rsshub.pseudoyu.com/v2ex/topics/hot', 'https://rsshub.wheremylife.cn/v2ex/topics/hot']
-  },
-  {
-    url: 'https://rsshub.app/github/trending/daily',
-    name: 'GitHub 趋势', category: 'dev', hotScore: 85, lang: 'zh',
-    desc: '每日 GitHub 热门项目',
-    urlBackup: ['https://rsshub.moeyy.cn/github/trending/daily', 'https://rsshub.pseudoyu.com/github/trending/daily', 'https://rsshub.wheremylife.cn/github/trending/daily']
-  },
   {
     url: 'https://cloud.tencent.com/developer/feed',
     name: '腾讯云社区', category: 'dev', hotScore: 76, lang: 'zh',
@@ -150,7 +134,47 @@ const FEEDS_DEV = [
     url: 'https://rsshub.moeyy.cn/hellogithub',
     name: 'HelloGitHub', category: 'dev', hotScore: 72, lang: 'zh',
     desc: '有趣的开源项目推荐',
-    urlBackup: ['https://rsshub.app/hellogithub']
+    urlBackup: ['https://rsshub.app/hellogithub', 'https://hub.slarker.me/hellogithub']
+  },
+  {
+    url: 'https://rsshub.app/github/trending/daily',
+    name: 'GitHub 趋势', category: 'dev', hotScore: 85, lang: 'zh',
+    desc: '每日 GitHub 热门项目',
+    urlBackup: [
+      'https://rsshub.moeyy.cn/github/trending/daily',
+      'https://rsshub.rsshub.net/github/trending/daily',
+      'https://hub.slarker.me/github/trending/daily'
+    ]
+  },
+  {
+    url: 'https://rsshub.app/v2ex/topics/hot',
+    name: 'V2EX 热门', category: 'dev', hotScore: 78, lang: 'zh',
+    desc: '创意工作者社区',
+    urlBackup: [
+      'https://rsshub.moeyy.cn/v2ex/topics/hot',
+      'https://rsshub.rsshub.net/v2ex/topics/hot',
+      'https://hub.slarker.me/v2ex/topics/hot'
+    ]
+  },
+  {
+    url: 'https://rsshub.app/juejin/category/frontend',
+    name: '掘金前端', category: 'dev', hotScore: 75, lang: 'zh',
+    desc: '前端技术文章',
+    urlBackup: [
+      'https://rsshub.moeyy.cn/juejin/category/frontend',
+      'https://rsshub.rsshub.net/juejin/category/frontend',
+      'https://hub.slarker.me/juejin/category/frontend'
+    ]
+  },
+  {
+    url: 'https://rsshub.app/juejin/category/backend',
+    name: '掘金后端', category: 'dev', hotScore: 75, lang: 'zh',
+    desc: '后端技术文章',
+    urlBackup: [
+      'https://rsshub.moeyy.cn/juejin/category/backend',
+      'https://rsshub.rsshub.net/juejin/category/backend',
+      'https://hub.slarker.me/juejin/category/backend'
+    ]
   },
 ];
 
@@ -165,28 +189,40 @@ const FEEDS_OPS = [
     url: 'https://rsshub.app/kubernetes/blog',
     name: 'K8s 博客', category: 'ops', hotScore: 80, lang: 'zh',
     desc: 'Kubernetes 官方博客',
-    urlBackup: ['https://rsshub.moeyy.cn/kubernetes/blog']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/kubernetes/blog',
+      'https://rsshub.rsshub.net/kubernetes/blog',
+      'https://hub.slarker.me/kubernetes/blog'
+    ]
   },
 ];
 
 // [产品设计]
 const FEEDS_PRODUCT = [
   {
-    url: 'https://rsshub.app/sspai',
-    name: '少数派', category: 'product', hotScore: 72, lang: 'zh',
-    desc: '数字生活与效率指南',
-    urlBackup: ['https://rsshub.moeyy.cn/sspai', 'https://rsshub.pseudoyu.com/sspai', 'https://rsshub.wheremylife.cn/sspai']
-  },
-  {
     url: 'https://www.woshipm.com/feed',
     name: '人人都是产品经理', category: 'product', hotScore: 75, lang: 'zh',
     desc: '产品/运营/设计社区'
   },
   {
+    url: 'https://rsshub.app/sspai',
+    name: '少数派', category: 'product', hotScore: 72, lang: 'zh',
+    desc: '数字生活与效率指南',
+    urlBackup: [
+      'https://rsshub.moeyy.cn/sspai',
+      'https://rsshub.rsshub.net/sspai',
+      'https://hub.slarker.me/sspai'
+    ]
+  },
+  {
     url: 'https://rsshub.app/uisdc/topic/design',
     name: '优设网', category: 'product', hotScore: 65, lang: 'zh',
     desc: '设计师交流平台',
-    urlBackup: ['https://rsshub.moeyy.cn/uisdc/topic/design', 'https://rsshub.pseudoyu.com/uisdc/topic/design', 'https://rsshub.wheremylife.cn/uisdc/topic/design']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/uisdc/topic/design',
+      'https://rsshub.rsshub.net/uisdc/topic/design',
+      'https://hub.slarker.me/uisdc/topic/design'
+    ]
   },
 ];
 
@@ -196,19 +232,31 @@ const FEEDS_BIZ = [
     url: 'https://rsshub.app/cls/telegraph',
     name: '财联社电报', category: 'biz', hotScore: 85, lang: 'zh',
     desc: '7×24小时财经快讯',
-    urlBackup: ['https://rsshub.moeyy.cn/cls/telegraph']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/cls/telegraph',
+      'https://rsshub.rsshub.net/cls/telegraph',
+      'https://hub.slarker.me/cls/telegraph'
+    ]
   },
   {
     url: 'https://rsshub.app/wallstreetcn/hot',
     name: '华尔街见闻', category: 'biz', hotScore: 82, lang: 'zh',
     desc: '全球财经资讯',
-    urlBackup: ['https://rsshub.moeyy.cn/wallstreetcn/hot']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/wallstreetcn/hot',
+      'https://rsshub.rsshub.net/wallstreetcn/hot',
+      'https://hub.slarker.me/wallstreetcn/hot'
+    ]
   },
   {
     url: 'https://rsshub.app/36kr/motif/3276901922258436',
     name: '36氪创投', category: 'biz', hotScore: 75, lang: 'zh',
     desc: '创业投资报道',
-    urlBackup: ['https://rsshub.moeyy.cn/36kr/motif/3276901922258436']
+    urlBackup: [
+      'https://rsshub.moeyy.cn/36kr/motif/3276901922258436',
+      'https://rsshub.rsshub.net/36kr/motif/3276901922258436',
+      'https://hub.slarker.me/36kr/motif/3276901922258436'
+    ]
   },
 ];
 
@@ -222,7 +270,7 @@ const ALL_FEEDS = [
   ...FEEDS_BIZ,
 ];
 
-export { ALL_FEEDS, CATEGORIES };
+export { ALL_FEEDS, CATEGORIES, detectCategory };
 
 // ==================== 热搜榜单抓取 ====================
 
@@ -611,8 +659,9 @@ export async function collectSingleSource(env, feed, options = {}) {
         });
 
         const summary = extractSummary(markdownDesc, title);
+        const category = detectCategory(title, markdownDesc, feed.category);
 
-        const newId = await db.createPost(0, `NewsBot (${feed.name})`, title, content, feed.category, feed.hotScore || 60, feed.category, feed.name, summary);
+        const newId = await db.createPost(0, `NewsBot (${feed.name})`, title, content, category, feed.hotScore || 60, category, feed.name, summary);
         if (onNewPost && newId) onNewPost(newId, title, content);
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 14 * 24 * 60 * 60 });
 
@@ -728,13 +777,18 @@ export async function collectHotSearch(env, onNewPost) {
     try {
       const fetcher = HOT_FETCHERS[source.fetchFn];
       if (!fetcher) { log.push(`  ⚠ 未知抓取器`); continue; }
-      const items = await fetcher(env);
+      const allItems = await fetcher(env);
+      // 热搜每个榜单取前 10 条高热度条目，防止淹没 RSS 专业分类
+      const items = (allItems || []).slice(0, 10);
 
       for (const item of items) {
         if (!item.title) continue;
         const kvKey = `pn:hot:${source.id}:${(await hashKey(item.title)).slice(0, 40)}`;
         const imported = await env.suyuankv.get(kvKey);
         if (imported) continue;
+
+        // 语义智能分类热搜（如科技、AI、商业热点自动分流，其余保留综合）
+        const category = detectCategory(item.title, item.description || '', 'general');
 
         const hotContent = [
           `**热搜排名**：#${item.rank}　**热度**：${item.hotValue || 'N/A'}`,
@@ -752,14 +806,15 @@ export async function collectHotSearch(env, onNewPost) {
         const rankPenalty = source.id === 'weibo' ? 5 : 3; // 微博热搜降权，减少综合资讯中微博占比
         const hotScore = Math.max(0, Math.min(100, 100 - (item.rank * rankPenalty) + Math.floor((item.hotValue || 0) / 10000)));
         const summary = extractSummary(hotContent, item.title);
-        const newId = await db.createPost(0, `热搜Bot (${source.name})`, item.title, hotContent, '热搜,general', hotScore, 'general', source.name, summary);
+        const tags = `热搜,${category}`;
+        const newId = await db.createPost(0, `热搜Bot (${source.name})`, item.title, hotContent, tags, hotScore, category, source.name, summary);
         if (onNewPost && newId) {
           onNewPost(newId, item.title, hotContent);
         }
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 2 * 60 * 60 });
         totalImported++;
       }
-      log.push(`  ✓ 入库 ${items.length > 0 ? Math.min(items.length, 20) : 0} 条`);
+      log.push(`  ✓ 入库 ${items.length > 0 ? Math.min(items.length, 10) : 0} 条`);
     } catch (err) {
       log.push(`  ❌ 失败: ${err.message}`);
     }

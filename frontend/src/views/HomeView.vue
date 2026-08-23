@@ -199,13 +199,13 @@ async function fetchPosts(append = false) {
 
 // 初始化：先展示缓存数据（秒开），再后台拉取最新
 async function initPosts() {
-  // 1. 尝试读取缓存
-  const cached = getSessionCache('home_posts_default', 300000) // 5min TTL
+  // 1. 尝试读取缓存（24h 离线快照，保证瞬时出图，后台 SWR 立即刷新最新数据）
+  const cached = getSessionCache('home_posts_default', 24 * 60 * 60 * 1000)
   if (cached && cached.posts && cached.posts.length > 0) {
     posts.value = cached.posts
     totalCount.value = cached.total || 0
     hasMore.value = posts.value.length < totalCount.value
-    isLoading.value = false // 有缓存就不显示 loading
+    isLoading.value = false // 有缓存数据直接渲染，不阻断用户浏览
   }
 
   // 2. 后台拉取最新数据（SWR）

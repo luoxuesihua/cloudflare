@@ -40,19 +40,19 @@ export function dedupedFetch(url, options = {}) {
   return promise
 }
 
-// ========== sessionStorage 缓存 ==========
+// ========== 客户端存储缓存（sessionStorage + localStorage 混合秒开） ==========
 
 const CACHE_PREFIX = '_cache_'
 
 /**
- * 从 sessionStorage 读取缓存
+ * 从存储读取缓存（优先 sessionStorage，兜底 localStorage 离线快照）
  * @param {string} key 
  * @param {number} ttlMs - TTL 毫秒
  * @returns {any|null}
  */
 export function getSessionCache(key, ttlMs = 60000) {
   try {
-    const raw = sessionStorage.getItem(CACHE_PREFIX + key)
+    const raw = sessionStorage.getItem(CACHE_PREFIX + key) || localStorage.getItem(CACHE_PREFIX + key)
     if (!raw) return null
     const entry = JSON.parse(raw)
     if (Date.now() - entry.t > ttlMs) {
@@ -66,14 +66,19 @@ export function getSessionCache(key, ttlMs = 60000) {
 }
 
 /**
- * 写入 sessionStorage 缓存
+ * 写入缓存（同时记录 localStorage 供新页面/新标签瞬时展示）
  * @param {string} key 
  * @param {any} data 
  */
 export function setSessionCache(key, data) {
   try {
     const entry = { data, t: Date.now() }
-    sessionStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry))
+    const serialized = JSON.stringify(entry)
+    sessionStorage.setItem(CACHE_PREFIX + key, serialized)
+    // 关键核心数据写入 localStorage 持久化快照
+    if (key.includes('home_posts') || key.includes('stats')) {
+      localStorage.setItem(CACHE_PREFIX + key, serialized)
+    }
   } catch {
     // 存储满时清旧缓存后重试
     try {
@@ -84,23 +89,29 @@ export function setSessionCache(key, data) {
 }
 
 /**
- * 清除过期的 sessionStorage 缓存
+ * 清除过期的 sessionStorage / localStorage 缓存
  */
 function clearOldCaches() {
   const now = Date.now()
-  const keys = Object.keys(sessionStorage)
-  for (const key of keys) {
-    if (key.startsWith(CACHE_PREFIX)) {
-      try {
-        const entry = JSON.parse(sessionStorage.getItem(key))
-        if (now - entry.t > 5 * 60 * 1000) {
-          sessionStorage.removeItem(key)
+  const cleanStorage = (storage) => {
+    try {
+      const keys = Object.keys(storage)
+      for (const key of keys) {
+        if (key.startsWith(CACHE_PREFIX)) {
+          try {
+            const entry = JSON.parse(storage.getItem(key))
+            if (now - entry.t > 24 * 60 * 60 * 1000) {
+              storage.removeItem(key)
+            }
+          } catch {
+            storage.removeItem(key)
+          }
         }
-      } catch {
-        sessionStorage.removeItem(key)
       }
-    }
+    } catch {}
   }
+  cleanStorage(sessionStorage)
+  cleanStorage(localStorage)
 }
 
 /**

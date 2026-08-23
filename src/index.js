@@ -4,10 +4,10 @@
 
 
 import { Hono } from 'hono'
-import auth from './routes/auth'
-import posts from './routes/posts'
-import sources from './routes/sources'
-import { Database } from './db'
+import auth from './routes/auth.js'
+import posts from './routes/posts.js'
+import sources from './routes/sources.js'
+import { Database } from './db.js'
 import { collectNews, collectHotSearch } from './services/collector.js'
 import { asyncAISummarize } from './services/summarizer.js'
 
@@ -30,8 +30,8 @@ const CSP = [
     "frame-ancestors 'none'",
     "form-action 'self'",
     "img-src 'self' data: https:",
-    "font-src 'self' https://fonts.gstatic.com data:",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
     "script-src 'self' https://static.cloudflareinsights.com",
     "connect-src 'self'",
     'upgrade-insecure-requests'
@@ -255,8 +255,8 @@ export default {
   },
   async scheduled(event, env, ctx) {
     // 根据 cron 表达式区分任务类型
-    // RSS 新闻采集：每 4 小时
-    // 热搜采集：每 30 分钟
+    // RSS 新闻采集：每 2 小时 (0 */2 * * *)
+    // 热搜采集：每 1 小时 (0 * * * *) 或每 30 分钟 (*/30 * * * *)
     const cron = event.cron || ''
 
     // AI 摘要回调：采集到新文章后异步生成 AI 摘要
@@ -266,7 +266,7 @@ export default {
       }
     }
 
-    if (cron.includes('*/30')) {
+    if (cron.includes('*/30') || cron === '0 * * * *') {
       ctx.waitUntil(collectHotSearch(env, onNewPost))
     } else {
       ctx.waitUntil(collectNews(env, onNewPost))

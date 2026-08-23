@@ -1,8 +1,7 @@
 /* Design System: Rin-Pro-Max — 响应式版 */
 
-/* ========== Google Fonts ========== */
-/* 字体通过 index.html 的 <link rel="preconnect"> + <link rel="stylesheet"> 引入，
-   避免在 CSS 中使用 @import 阻塞 CSSOM 构建，从而加快首屏渲染 */
+/* ========== Typography System ========== */
+/* 采用原生操作系统字体栈，零网络开销，瞬时渲染，优雅跨平台回退 */
 
 :root {
   /* 背景 */
@@ -22,9 +21,9 @@
   /* 排版 */
   --text-main: #F8FAFC;
   --text-muted: #94A3B8;
-  --font-heading: 'Space Grotesk', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, sans-serif;
-  --font-code: 'Fira Code', monospace;
+  --font-heading: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-code: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Cascadia Code', 'Fira Code', 'Liberation Mono', 'Courier New', monospace;
 
   /* 间距与圆角 */
   --radius-sm: 8px;
