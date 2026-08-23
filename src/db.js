@@ -229,14 +229,25 @@ export class Database {
         return { total_deleted: totalDeleted };
     }
 
-    // 分类统计
+    // 分类与来源统计
     async getCategoryStats() {
         try {
-            const { results } = await this.db.prepare(
-                "SELECT category, COUNT(*) as count FROM notes WHERE category IS NOT NULL AND category != '' GROUP BY category"
-            ).all();
-            return results || [];
-        } catch (e) { return []; }
+            const [catRows, sourceRows] = await Promise.all([
+                this.db.prepare(
+                    "SELECT category, COUNT(*) as count FROM notes WHERE category IS NOT NULL AND category != '' GROUP BY category"
+                ).all(),
+                this.db.prepare(
+                    "SELECT DISTINCT name FROM sources WHERE is_active = 1 AND name IS NOT NULL AND name != '' ORDER BY name"
+                ).all()
+            ]);
+            return {
+                categories: catRows.results || [],
+                sources: (sourceRows.results || []).map(r => r.name)
+            };
+        } catch (e) {
+            console.warn('[db] getCategoryStats 失败:', e.message);
+            return { categories: [], sources: [] };
+        }
     }
 
     // ========== 评论相关 ==========

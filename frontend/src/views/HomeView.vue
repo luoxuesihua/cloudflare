@@ -107,8 +107,12 @@ const categories = [
 // 当前选中分类对象
 const activeCategory = computed(() => categories.find(c => c.id === currentCategory.value) || categories[0])
 
-// 新闻源列表（供筛选，从已加载文章中提取）
+// 后端返回的全量来源列表
+const statsSources = ref([])
+
+// 新闻源列表（供筛选）：优先用后端 stats 返回的全量来源，兜底用当前文章
 const sources = computed(() => {
+  if (statsSources.value.length > 0) return statsSources.value
   const set = new Set()
   posts.value.forEach(p => {
     const src = extractSource(p.username)
@@ -222,11 +226,23 @@ async function fetchStats({ silent = false } = {}) {
 function applyStatsData(data) {
   const map = {}
   let total = 0
+  let sourceList = []
+
+  // 兼容旧格式（数组仅含分类统计）和新格式（{ categories, sources }）
   if (Array.isArray(data)) {
     data.forEach(d => { map[d.category] = d.count; total += d.count })
+  } else if (data && typeof data === 'object') {
+    if (Array.isArray(data.categories)) {
+      data.categories.forEach(d => { map[d.category] = d.count; total += d.count })
+    }
+    if (Array.isArray(data.sources)) {
+      sourceList = data.sources.filter(Boolean)
+    }
   }
+
   map[''] = total
   categoryStats.value = map
+  statsSources.value = sourceList
 }
 
 function switchCategory(catId) {
