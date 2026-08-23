@@ -261,8 +261,8 @@ function toggleSort() {
   hasMore.value = true
 }
 
-function filterBySource(source) {
-  currentSource.value = currentSource.value === source ? '' : source
+function onSourceChange(e) {
+  currentSource.value = e.target.value
   posts.value = []
   hasMore.value = true
 }
@@ -481,10 +481,10 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
         </button>
 
         <div class="source-filter" v-if="sources.length > 0">
-          <select v-model="currentSource" @change="filterBySource(currentSource); posts = []; hasMore = true" class="source-select">
-            <option value="">📡 全部来源</option>
-            <option v-for="s in sources" :key="s" :value="s">{{ s }}</option>
-          </select>
+        <select :value="currentSource" @change="onSourceChange" class="source-select">
+          <option value="">📡 全部来源</option>
+          <option v-for="s in sources" :key="s" :value="s">{{ s }}</option>
+        </select>
         </div>
 
         <button v-if="hasFilter()" class="clear-btn" @click="clearAllFilters">✕ 清空筛选</button>

@@ -95,6 +95,10 @@ posts.post('/', async (c) => {
     const { title, content, tags, category } = await c.req.json()
     if (!title || !content) return c.json({ error: '标题和内容不能为空' }, 400)
 
+    // 校验分类白名单，防止脏数据污染统计
+    const VALID_CATEGORIES = ['general', 'ai', 'dev', 'ops', 'product', 'biz']
+    const safeCategory = VALID_CATEGORIES.includes(category) ? category : 'general'
+
     const db = getDb(c)
 
     // 规则提取摘要（用户文章也适用）
@@ -116,7 +120,7 @@ posts.post('/', async (c) => {
         }
     } catch { /* 提取失败不影响主流程 */ }
 
-    await db.createPost(user.id, user.username, title, content, tags || '', 50, category || 'general', '', summary)
+    await db.createPost(user.id, user.username, title, content, tags || '', 50, safeCategory, user.username, summary)
     invalidatePostCaches(c, c.env)
     return c.json({ success: true }, 201)
 })
