@@ -64,9 +64,20 @@ async function recordReadingHistory() {
 }
 
 onMounted(async () => {
+  // 防御：任何请求 hang 住超过 10s 强制退出 loading，避免永久显示"加载中..."
+  const timeout = setTimeout(() => {
+    if (isLoading.value) {
+      error.value = error.value || '请求超时，请刷新重试'
+      isLoading.value = false
+    }
+  }, 10000)
+
   try {
     const res = await dedupedFetch(`/api/posts/${route.params.id}`)
-    if (!res.ok) throw new Error('文章不存在')
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(text ? `${res.status}: ${text}` : '文章不存在')
+    }
     post.value = await res.json()
     fetchAISummary()
     fetchComments()
@@ -76,8 +87,9 @@ onMounted(async () => {
       recordReadingHistory()
     }
   } catch (e) {
-    error.value = e.message
+    error.value = e.message || '加载失败'
   } finally {
+    clearTimeout(timeout)
     isLoading.value = false
   }
 })
