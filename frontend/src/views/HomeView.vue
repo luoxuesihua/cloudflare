@@ -110,20 +110,26 @@ const activeCategory = computed(() => categories.find(c => c.id === currentCateg
 // 后端返回的全量来源列表
 const statsSources = ref([])
 
-// 新闻源列表（供筛选）：优先用后端 stats 返回的全量来源，兜底用当前文章
+// 新闻源列表（供筛选）：优先用后端 stats 返回的全量来源，兜底用当前文章，并清洗掉无效的占位项
 const sources = computed(() => {
-  if (statsSources.value.length > 0) return statsSources.value
+  const rawList = statsSources.value.length > 0 ? statsSources.value : posts.value.map(p => extractSource(p.username)).filter(Boolean)
+  const invalidNames = new Set(['', '全部', '全部来源', '📡 全部来源', 'null', 'undefined'])
   const set = new Set()
-  posts.value.forEach(p => {
-    const src = extractSource(p.username)
-    if (src) set.add(src)
+  rawList.forEach(s => {
+    if (typeof s === 'string') {
+      const clean = s.trim()
+      if (clean && !invalidNames.has(clean)) {
+        set.add(clean)
+      }
+    }
   })
-  return [...set].sort()
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 })
 
 // ===== 数据获取 =====
 // AbortController 防止快速切换筛选时的竞态条件
 let abortController = null
+let currentRequestId = 0
 
 async function fetchPosts(append = false) {
   // 取消上一次未完成的请求
@@ -131,6 +137,7 @@ async function fetchPosts(append = false) {
     abortController.abort()
   }
   abortController = new AbortController()
+  const reqId = ++currentRequestId
 
   if (append) {
     isLoadingMore.value = true
@@ -146,7 +153,9 @@ async function fetchPosts(append = false) {
   try {
     const params = new URLSearchParams()
     if (currentCategory.value) params.set('category', currentCategory.value)
-    if (currentSource.value) params.set('source', currentSource.value)
+    if (currentSource.value && currentSource.value !== '全部来源' && currentSource.value !== '全部') {
+      params.set('source', currentSource.value)
+    }
     if (currentTag.value) params.set('tag', currentTag.value)
     if (searchKeyword.value.trim()) params.set('keyword', searchKeyword.value.trim())
     params.set('sort', sortMode.value)
@@ -157,6 +166,9 @@ async function fetchPosts(append = false) {
     const res = await dedupedFetch(url, { signal: abortController.signal, headers: getHeaders() })
     const data = await res.json()
     const newPosts = data.posts || data
+
+    // 只有最新发起的请求才处理结果渲染
+    if (reqId !== currentRequestId) return
 
     if (append) {
       posts.value.push(...newPosts)
@@ -176,9 +188,12 @@ async function fetchPosts(append = false) {
     if (e.name === 'AbortError') return
     console.error('获取文章失败', e)
   } finally {
-    isLoading.value = false
-    isLoadingMore.value = false
-    isSilentRefresh.value = false
+    // 只有最新发起的请求才有权更新 loading 状态
+    if (reqId === currentRequestId) {
+      isLoading.value = false
+      isLoadingMore.value = false
+      isSilentRefresh.value = false
+    }
   }
 }
 
@@ -262,7 +277,8 @@ function toggleSort() {
 }
 
 function onSourceChange(e) {
-  currentSource.value = e.target.value
+  const val = (e.target.value || '').trim()
+  currentSource.value = (val === '全部来源' || val === '全部' || val === '📡 全部来源') ? '' : val
   posts.value = []
   hasMore.value = true
 }
@@ -313,7 +329,8 @@ let observer = null
 
 onMounted(() => {
   observer = new IntersectionObserver((entries) => {
-    if (entries[0].isIntersecting && hasMore.value && !isLoadingMore.value && !isLoading.value) {
+    // 只有在非加载中、有更多数据且当前已有文章渲染时才触发无限滚动
+    if (entries[0].isIntersecting && hasMore.value && !isLoadingMore.value && !isLoading.value && posts.value.length > 0) {
       fetchPosts(true)
     }
   }, { rootMargin: '200px' })

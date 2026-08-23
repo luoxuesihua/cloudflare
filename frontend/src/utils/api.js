@@ -21,8 +21,8 @@ const pendingRequests = new Map()
  * @returns {Promise<Response>}
  */
 export function dedupedFetch(url, options = {}) {
-  // 仅对 GET 请求去重
-  if (options.method && options.method.toUpperCase() !== 'GET') {
+  // 仅对不带自定义 AbortSignal 的 GET 请求去重（避免多个请求共享时因 AbortController 竞态导致全部被 cancel）
+  if ((options.method && options.method.toUpperCase() !== 'GET') || options.signal) {
     return fetch(url, options)
   }
 

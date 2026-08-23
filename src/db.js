@@ -147,6 +147,9 @@ export class Database {
     async findAllPosts(tag = null, category = null, source = null, keyword = null, sortBy = 'created_at', order = 'DESC', limit = 20, offset = 0, userInterests = []) {
         // 清理参数中可能存在的首尾空白（前端传参或用户输入常见情况）
         source = source ? source.trim() : null
+        if (source === '全部来源' || source === '全部' || source === '📡 全部来源' || source === '') {
+            source = null
+        }
         keyword = keyword ? keyword.trim() : null
 
         // 构建带搜索条件的 SQL 查询
@@ -267,9 +270,9 @@ export class Database {
                 this.db.prepare(
                     "SELECT category, COUNT(*) as count FROM notes WHERE category IS NOT NULL AND category != '' GROUP BY category"
                 ).all(),
-                // 来源列表以实际文章中的 source_name 为准，避免 sources 表与文章数据不一致导致筛选为空
+                // 来源列表以实际文章中的 source_name 为准，避免 sources 表与文章数据不一致导致筛选为空，并过滤占位字符串
                 this.db.prepare(
-                    "SELECT DISTINCT source_name AS name FROM notes WHERE source_name IS NOT NULL AND source_name != '' ORDER BY source_name"
+                    "SELECT DISTINCT source_name AS name FROM notes WHERE source_name IS NOT NULL AND TRIM(source_name) NOT IN ('', '全部来源', '全部', '📡 全部来源') ORDER BY source_name"
                 ).all()
             ]);
             return {

@@ -51,7 +51,10 @@ function sanitizeHtml(text) {
 posts.get('/', withCache(CACHE_TTL.POSTS_LIST, async (c) => {
     const tag = c.req.query('tag')
     const category = c.req.query('category')
-    const source = c.req.query('source')
+    let source = c.req.query('source')
+    if (source === '全部来源' || source === '全部' || source === '📡 全部来源') {
+        source = undefined
+    }
     const keyword = c.req.query('keyword')
     
     // 安全性：使用白名单校验排序参数
