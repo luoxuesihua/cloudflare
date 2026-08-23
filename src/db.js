@@ -164,7 +164,7 @@ export class Database {
 
         // 用窗口函数一次性拿到分页数据 + 总数，省去一次独立的 COUNT 查询
         // 注意：窗口函数在 SQL 执行顺序中先于 LIMIT/OFFSET 求值，故 COUNT(*) OVER () 即全量总数
-        const windowSql = finalOrderSql.replace(/^SELECT id/, 'SELECT id, COUNT(*) OVER () AS total_count')
+        let windowSql = finalOrderSql.replace(/^SELECT id/, 'SELECT id, COUNT(*) OVER () AS total_count')
         windowSql += " LIMIT ? OFFSET ?"
         bindings.push(limit, offset)
 
