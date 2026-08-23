@@ -121,10 +121,34 @@ export class Database {
         for (const sql of indexes) {
             try { await this.db.prepare(sql).run(); } catch (e) { /* 索引已存在 */ }
         }
+
+        // 一次性回填：旧文章的 source_name 为空，但从 username 中可提取来源
+        try {
+            const migrated = await this.env.suyuankv.get('migration:backfill_source_name');
+            if (!migrated) {
+                await this.db.prepare(`
+                    UPDATE notes
+                    SET source_name = TRIM(SUBSTR(username, 9), ')')
+                    WHERE source_name = '' AND username LIKE 'NewsBot (%)'
+                `).run();
+                await this.db.prepare(`
+                    UPDATE notes
+                    SET source_name = TRIM(SUBSTR(username, 6), ')')
+                    WHERE source_name = '' AND username LIKE '热搜Bot (%)'
+                `).run();
+                await this.env.suyuankv.put('migration:backfill_source_name', '1');
+            }
+        } catch (e) {
+            console.warn('[db] source_name 回填失败:', e.message);
+        }
     }
 
     // ========== 文章相关 ==========
     async findAllPosts(tag = null, category = null, source = null, keyword = null, sortBy = 'created_at', order = 'DESC', limit = 20, offset = 0, userInterests = []) {
+        // 清理参数中可能存在的首尾空白（前端传参或用户输入常见情况）
+        source = source ? source.trim() : null
+        keyword = keyword ? keyword.trim() : null
+
         // 构建带搜索条件的 SQL 查询
         let sql = "SELECT id, title, username, tags, category, hot_score, source_name, summary, ai_summary, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes WHERE 1=1"
         const bindings = []
@@ -243,8 +267,9 @@ export class Database {
                 this.db.prepare(
                     "SELECT category, COUNT(*) as count FROM notes WHERE category IS NOT NULL AND category != '' GROUP BY category"
                 ).all(),
+                // 来源列表以实际文章中的 source_name 为准，避免 sources 表与文章数据不一致导致筛选为空
                 this.db.prepare(
-                    "SELECT DISTINCT name FROM sources WHERE is_active = 1 AND name IS NOT NULL AND name != '' ORDER BY name"
+                    "SELECT DISTINCT source_name AS name FROM notes WHERE source_name IS NOT NULL AND source_name != '' ORDER BY source_name"
                 ).all()
             ]);
             return {
