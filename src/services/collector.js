@@ -483,7 +483,10 @@ async function fetchZhihuHot(env) {
       source: 'zhihu',
       sourceName: '知乎热榜'
     }));
-  } catch { return []; }
+  } catch (e) {
+    console.warn('[collector] fetchZhihuHot 失败:', e.message);
+    return [];
+  }
 }
 
 async function fetchBaiduHot(env) {
@@ -517,7 +520,10 @@ async function fetchBaiduHot(env) {
       }
     }
     return items;
-  } catch { return []; }
+  } catch (e) {
+    console.warn('[collector] fetchBaiduHot 失败:', e.message);
+    return [];
+  }
 }
 
 const HOT_FETCHERS = { zhihuHot: fetchZhihuHot, baiduHot: fetchBaiduHot };
