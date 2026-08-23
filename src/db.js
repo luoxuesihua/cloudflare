@@ -1,9 +1,23 @@
+// schema 初始化记忆化：D1 schema 是持久化的，幂等操作只需在整个 isolate 生命周期内执行一次
+// 避免每个请求（含首页每个 API 调用）都白白发起 18 条 CREATE/ALTER/INDEX 语句
+let schemaInitPromise = null
+
 export class Database {
     constructor(env) {
         this.db = env.suyuan
     }
 
     async init() {
+        if (!schemaInitPromise) {
+            schemaInitPromise = this._ensureSchema().catch((e) => {
+                schemaInitPromise = null // 初始化失败时允许下次重试
+                throw e
+            })
+        }
+        return schemaInitPromise
+    }
+
+    async _ensureSchema() {
         await this.db.prepare(`
       CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,21 +162,14 @@ export class Database {
             finalOrderSql = sql
         }
 
-        // 更安全的 COUNT 构建：用 indexOf 定位 FROM 起始位置
-        const fromIdx = finalOrderSql.indexOf(' FROM ')
-        const countSql = 'SELECT COUNT(*) as cnt' + finalOrderSql.substring(fromIdx)
-        // 移除 COUNT 查询中的 ORDER BY 子句（不需要且可能出错）
-        const orderIdx = countSql.indexOf(' ORDER BY')
-        const cleanCountSql = orderIdx > -1 ? countSql.substring(0, orderIdx) : countSql
-        
-        const { results: countResults } = await this.db.prepare(cleanCountSql).bind(...bindings).all()
-        const total = countResults?.[0]?.cnt || 0
-
-        // 分页
-        finalOrderSql += " LIMIT ? OFFSET ?"
+        // 用窗口函数一次性拿到分页数据 + 总数，省去一次独立的 COUNT 查询
+        // 注意：窗口函数在 SQL 执行顺序中先于 LIMIT/OFFSET 求值，故 COUNT(*) OVER () 即全量总数
+        const windowSql = finalOrderSql.replace(/^SELECT id/, 'SELECT id, COUNT(*) OVER () AS total_count')
+        windowSql += " LIMIT ? OFFSET ?"
         bindings.push(limit, offset)
 
-        const { results } = await this.db.prepare(finalOrderSql).bind(...bindings).all()
+        const { results } = await this.db.prepare(windowSql).bind(...bindings).all()
+        const total = results?.length ? (results[0].total_count || 0) : 0
 
         return { posts: results || [], total };
     }

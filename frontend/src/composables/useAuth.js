@@ -166,8 +166,9 @@ export function useAuth() {
         }
     }
 
-    // 页面加载时获取 CSRF Token
-    if (!csrfToken.value && (token.value || typeof window !== 'undefined')) {
+    // 页面加载时获取 CSRF Token：仅已登录用户预取
+    // 匿名用户改为首次写操作（登录/注册）时惰性获取，避免首页无谓请求
+    if (!csrfToken.value && token.value) {
         fetchCsrfToken()
     }
 

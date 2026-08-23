@@ -32,7 +32,7 @@ const CSP = [
     "img-src 'self' data:",
     "font-src 'self' https://fonts.gstatic.com data:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "script-src 'self'",
+    "script-src 'self' https://static.cloudflareinsights.com",
     "connect-src 'self'",
     'upgrade-insecure-requests'
 ].join('; ')
@@ -126,15 +126,10 @@ async function rateLimit(c, next) {
 }
 
 // ========== CSRF 保护中间件 ==========
-// 本项目使用 `Authorization: Bearer <token>` 作为鉴权方式（token 存于
-// localStorage，而非 Cookie），因此不存在传统的 Cookie-based CSRF 风险。
-// 这里额外做一层"同源 + 双重提交"校验作为纵深防御：
-//   1. 仅对 /api 下的写请求（非 GET/HEAD/OPTIONS）生效；
-//   2. 已登录请求需携带与 KV 中 session 绑定的 X-CSRF-Token；
-//   3. 未登录请求（注册/登录）无需 CSRF（无会话凭证可被盗用），直接放行。
+// 对所有非 GET/HEAD/OPTIONS 的写操作请求进行 CSRF 验证
 async function csrfProtection(c, next) {
     const method = c.req.method.toUpperCase()
-
+    
     // 只对会改变状态的请求进行验证
     if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
         return await next()
@@ -146,19 +141,20 @@ async function csrfProtection(c, next) {
         return await next()
     }
 
-    // 未登录状态（无 Authorization）的写请求（如 send-code/register/login）
-    // 不存在 CSRF 风险，直接放行
+    // 本项目鉴权基于 Authorization: Bearer（存于 localStorage，非 Cookie），
+    // 未登录写请求（注册/登录/发送验证码）不存在传统 CSRF 风险，直接放行
     const sessionId = c.req.header('Authorization')?.replace('Bearer ', '')
     if (!sessionId) {
         return await next()
     }
 
-    // 已登录请求：校验双重提交的 CSRF Token
+    // 已登录请求：必须携带双重提交的 CSRF Token
     const csrfToken = c.req.header('X-CSRF-Token')
     if (!csrfToken) {
         return c.json({ error: '缺少 CSRF Token，请刷新页面重试' }, 403)
     }
 
+    // 已登录用户从 KV 获取 CSRF Token
     const storedCsrf = await c.env.suyuankv.get(`csrf:${sessionId}`)
     if (!storedCsrf || storedCsrf !== csrfToken) {
         return c.json({ error: 'CSRF 验证失败，请重新登录' }, 403)
@@ -180,8 +176,7 @@ app.get('/api/csrf-token', async (c) => {
             expirationTtl: 7200 // 2小时有效
         })
     }
-    // 未登录用户：本项目鉴权基于 Authorization header（非 Cookie），
-    // 未登录写请求（注册/登录）不存在 CSRF 风险，无需存储 token。
+    // 未登录用户无需存储 token（其写请求不参与 CSRF 校验）
     
     return c.json({ csrf_token: token })
 })
@@ -207,7 +202,9 @@ app.use('/api/*', async (c, next) => {
 
 app.use('*', rateLimit)
 app.use('*', csrfProtection)  // CSRF 保护
-app.use('*', async (c, next) => {
+// 仅在 API 路由确保 DB schema 就绪（schema 初始化已在 db.js 内记忆化，每个 isolate 仅执行一次）
+// SPA 静态页面 / 404 兜底无需访问数据库，避免无谓的 D1 往返
+app.use('/api/*', async (c, next) => {
   const db = new Database(c.env)
   await db.init()
   await next()
@@ -233,19 +230,21 @@ app.all('*', async (c) => {
     return notFound()
   }
 
+  // ASSETS.fetch 返回的 Response headers 是 immutable，必须先创建副本才能修改
+  const secured = new Response(response.body, response)
+
   // 静态资源缓存策略
   if (url.pathname.startsWith('/assets/')) {
     // Vite 构建的资源文件带有 hash，可长期缓存
-    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+    secured.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   } else if (isStaticAssetPath(url.pathname)) {
     // 其他静态文件缓存 1 天
-    response.headers.set('Cache-Control', 'public, max-age=86400')
+    secured.headers.set('Cache-Control', 'public, max-age=86400')
   } else {
     // SPA 页面入口不缓存（确保用户获取最新版本）
-    response.headers.set('Cache-Control', 'no-cache')
+    secured.headers.set('Cache-Control', 'no-cache')
   }
 
-  const secured = new Response(response.body, response)
   applySecurityHeaders(secured.headers)
   return secured
 })

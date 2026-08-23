@@ -54,6 +54,7 @@ const sendCode = async () => {
   errorMsg.value = ''
 
   try {
+    await auth.refreshCsrf()
     const res = await fetch('/api/auth/send-code', {
       method: 'POST',
       headers: auth.getHeaders(),
@@ -103,6 +104,7 @@ const handleRegister = async () => {
   errorMsg.value = ''
 
   try {
+    await auth.refreshCsrf()
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: auth.getHeaders(),

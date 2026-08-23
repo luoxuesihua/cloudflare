@@ -1,7 +1,8 @@
 /* Design System: Rin-Pro-Max — 响应式版 */
 
 /* ========== Google Fonts ========== */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Fira+Code:wght@400;500&display=swap');
+/* 字体通过 index.html 的 <link rel="preconnect"> + <link rel="stylesheet"> 引入，
+   避免在 CSS 中使用 @import 阻塞 CSSOM 构建，从而加快首屏渲染 */
 
 :root {
   /* 背景 */
