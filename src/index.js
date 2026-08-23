@@ -98,18 +98,19 @@ function notFound() {
     return response
 }
 
-// Rate Limit 中间件：基于 KV 的滑动窗口限流（简化计数器，减少竞态窗口）
+// Rate Limit 中间件：基于 KV 的滑动窗口限流（按 IP，60s 内最多 N 次）
+// 说明：send-code 的限流由 auth.js 按邮箱维度处理（60s 一次，更强），此处不再重复，避免双重限制互相抵消
 async function rateLimit(c, next) {
     const path = new URL(c.req.url).pathname
-    // 仅对敏感接口限流
-    const rateLimitedPaths = ['/api/auth/send-code', '/api/auth/login', '/api/auth/login-code', '/api/auth/register']
+    // 仅对敏感写入接口限流（防暴力破解）
+    const rateLimitedPaths = ['/api/auth/login', '/api/auth/login-code', '/api/auth/register']
     if (!rateLimitedPaths.some(p => path.endsWith(p))) {
         return await next()
     }
 
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown'
     const key = `rate_limit:${path}:${ip}`
-    const maxReq = path.includes('send-code') ? 1 : 5  // 发送验证码 1 次/分钟，登录 5 次/分钟
+    const maxReq = 5  // 登录/注册 5 次/分钟（按 IP）
 
     const record = await c.env.suyuankv.get(key)
     const count = record ? parseInt(record, 10) : 0

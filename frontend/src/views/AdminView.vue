@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
-const { user, isLoggedIn, isAdmin, getHeaders } = useAuth()
+const { user, isLoggedIn, isAdmin, getHeaders, setAuth } = useAuth()
 
 // 未登录用户重定向到登录页
 if (!isLoggedIn.value) {
@@ -180,10 +180,11 @@ async function saveProfile() {
     })
     const data = await res.json()
     if (res.ok) {
-      // 更新本地 user 数据
-      if (data.user) {
+      // 更新本地 user 数据；后端改资料会提升 token 版本并重发 token，需同步刷新
+      if (data.token) {
+        setAuth(data.token, data.user)
+      } else if (data.user) {
         user.value = { ...user.value, ...data.user }
-        // 更新 localStorage (简单处理，useAuth 可能需要暴露 setAuth 但这里直接改 ref 也行，刷新后会重新 fetch /me)
         localStorage.setItem('auth_user', JSON.stringify(user.value))
       }
       isEditing.value = false

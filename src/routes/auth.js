@@ -72,7 +72,46 @@ async function getUser(c) {
     const token = c.req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return null;
     const userStr = await c.env.suyuankv.get(token);
-    return userStr ? JSON.parse(userStr) : null;
+    if (!userStr) return null;
+    const user = JSON.parse(userStr);
+
+    // 令牌版本校验：修改密码/改邮箱等敏感操作后旧令牌失效
+    const db = getDb(c);
+    const currentVersion = await db.getTokenVersion(user.id);
+    if (typeof user.tokenVersion === 'number' && user.tokenVersion !== currentVersion) {
+        return null;
+    }
+    return user;
+}
+
+// 签发令牌：写入当前 token_version，使旧令牌在版本变更后失效
+async function issueToken(c, user) {
+    const db = getDb(c);
+    const tokenVersion = await db.getTokenVersion(user.id);
+    const token = crypto.randomUUID();
+    const userData = {
+        id: user.id, username: user.username, email: user.email,
+        phone: user.phone, role: user.role, tokenVersion
+    };
+    await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 });
+    return { token, userData };
+}
+
+// 校验验证码并防暴破（失败 5 次作废）。namespace 区分注册/登录，避免互相覆盖
+async function verifyCode(c, namespace, email, code) {
+    const failKey = `code_fail:${namespace}:${email}`;
+    const failCount = parseInt(await c.env.suyuankv.get(failKey) || '0', 10);
+    if (failCount >= 5) {
+        await c.env.suyuankv.delete(`code:${namespace}:${email}`);
+        await c.env.suyuankv.delete(failKey);
+        return { ok: false, error: '验证码尝试次数过多，请重新获取', status: 429 };
+    }
+    const storedCode = await c.env.suyuankv.get(`code:${namespace}:${email}`);
+    if (!storedCode || storedCode !== code) {
+        await c.env.suyuankv.put(failKey, String(failCount + 1), { expirationTtl: 300 });
+        return { ok: false, error: '验证码错误或已过期', status: 400 };
+    }
+    return { ok: true };
 }
 
 // ========== 验证码相关 ==========
@@ -94,7 +133,7 @@ auth.post('/send-code', async (c) => {
     }
 
     // 防止频繁发送：检查是否 60 秒内已发送
-    const rateLimitKey = `code_rate:${email}`
+    const rateLimitKey = `code_rate:${type}:${email}`
     const lastSent = await c.env.suyuankv.get(rateLimitKey)
     if (lastSent) {
         return c.json({ error: '请求过于频繁，请稍后再试' }, 429)
@@ -108,10 +147,10 @@ auth.post('/send-code', async (c) => {
         return c.json({ error: '验证码发送失败，请稍后重试' }, 500)
     }
 
-    // 存储验证码到 KV，5 分钟过期
-    await c.env.suyuankv.put(`code:${email}`, code, { expirationTtl: 300 })
+    // 存储验证码到 KV，5 分钟过期（按 type 命名空间隔离注册/登录）
+    await c.env.suyuankv.put(`code:${type}:${email}`, code, { expirationTtl: 300 })
     // 重置失败计数（防止暴力破解）
-    await c.env.suyuankv.put(`code_fail:${email}`, '0', { expirationTtl: 300 })
+    await c.env.suyuankv.put(`code_fail:${type}:${email}`, '0', { expirationTtl: 300 })
     // 频率限制标记，60 秒过期
     await c.env.suyuankv.put(rateLimitKey, '1', { expirationTtl: 60 })
 
@@ -128,19 +167,8 @@ auth.post('/register', async (c) => {
     if (pwdError) return c.json({ error: pwdError }, 400)
 
     // 校验验证码（含防暴破：失败 5 次即作废，需重新获取）
-    const failKey = `code_fail:${email}`
-    const failCount = parseInt(await c.env.suyuankv.get(failKey) || '0', 10)
-    if (failCount >= 5) {
-        await c.env.suyuankv.delete(`code:${email}`)
-        await c.env.suyuankv.delete(failKey)
-        return c.json({ error: '验证码尝试次数过多，请重新获取' }, 429)
-    }
-
-    const storedCode = await c.env.suyuankv.get(`code:${email}`)
-    if (!storedCode || storedCode !== code) {
-        await c.env.suyuankv.put(failKey, String(failCount + 1), { expirationTtl: 300 })
-        return c.json({ error: '验证码错误或已过期' }, 400)
-    }
+    const v = await verifyCode(c, 'register', email, code)
+    if (!v.ok) return c.json({ error: v.error }, v.status)
 
     const db = getDb(c)
 
@@ -166,9 +194,11 @@ auth.post('/register', async (c) => {
     await db.createUser(finalUsername, email, phone || '', hash, role)
 
     // 验证码用完即删
-    await c.env.suyuankv.delete(`code:${email}`)
+    await c.env.suyuankv.delete(`code:register:${email}`)
 
-    return c.json({ success: true }, 201)
+    const newUser = await db.findUserByEmail(email)
+    const { token, userData } = await issueToken(c, newUser)
+    return c.json({ token, ...userData }, 201)
 })
 
 // ========== 密码登录 ==========
@@ -188,11 +218,8 @@ auth.post('/login', async (c) => {
         await db.updatePassword(user.id, newHash)
     }
 
-    const token = crypto.randomUUID()
-    const userData = { id: user.id, username: user.username, email: user.email, phone: user.phone, role: user.role }
-    await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 })
-
-    return c.json({ token, ...userData })
+    const tokenInfo = await issueToken(c, user)
+    return c.json({ token: tokenInfo.token, ...tokenInfo.userData })
 })
 
 // ========== 验证码登录 ==========
@@ -201,32 +228,19 @@ auth.post('/login-code', async (c) => {
     if (!email || !code) return c.json({ error: '请填写邮箱和验证码' }, 400)
 
     // 校验验证码（含防暴破：失败 5 次即作废，需重新获取）
-    const failKey = `code_fail:${email}`
-    const failCount = parseInt(await c.env.suyuankv.get(failKey) || '0', 10)
-    if (failCount >= 5) {
-        await c.env.suyuankv.delete(`code:${email}`)
-        await c.env.suyuankv.delete(failKey)
-        return c.json({ error: '验证码尝试次数过多，请重新获取' }, 429)
-    }
-
-    const storedCode = await c.env.suyuankv.get(`code:${email}`)
-    if (!storedCode || storedCode !== code) {
-        await c.env.suyuankv.put(failKey, String(failCount + 1), { expirationTtl: 300 })
-        return c.json({ error: '验证码错误或已过期' }, 400)
-    }
+    const v = await verifyCode(c, 'login', email, code)
+    if (!v.ok) return c.json({ error: v.error }, v.status)
 
     const db = getDb(c)
     const user = await db.findUserByEmail(email)
     if (!user) return c.json({ error: '用户不存在' }, 404)
 
-    const token = crypto.randomUUID()
-    const userData = { id: user.id, username: user.username, email: user.email, phone: user.phone, role: user.role }
-    await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 })
+    const tokenInfo = await issueToken(c, user)
 
     // 验证码用完即删
-    await c.env.suyuankv.delete(`code:${email}`)
+    await c.env.suyuankv.delete(`code:login:${email}`)
 
-    return c.json({ token, ...userData })
+    return c.json({ token: tokenInfo.token, ...tokenInfo.userData })
 })
 
 // ========== 用户信息 ==========
@@ -263,13 +277,12 @@ auth.put('/me', async (c) => {
 
     await db.updateUser(user.id, username, email, phone || '')
 
-    const token = c.req.header('Authorization')?.replace('Bearer ', '')
-    if (token) {
-        const userData = { id: user.id, username, email, phone, role: user.role }
-        await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 })
-    }
+    // 邮箱/用户名变更：提升 token 版本，使旧令牌失效，重新签发
+    const db2 = getDb(c)
+    await db2.bumpTokenVersion(user.id)
+    const tokenInfo = await issueToken(c, { id: user.id, username, email, phone, role: user.role })
 
-    return c.json({ success: true, user: { id: user.id, username, email, phone, role: user.role } })
+    return c.json({ success: true, token: tokenInfo.token, user: tokenInfo.userData })
 })
 
 // ========== 修改密码 ==========
@@ -293,6 +306,8 @@ auth.post('/password', async (c) => {
 
     const newHash = await hashPassword(newPassword)
     await db.updatePassword(user.id, newHash)
+    // 修改密码：使该用户所有已签发令牌失效
+    await db.bumpTokenVersion(user.id)
     return c.json({ success: true })
 })
 

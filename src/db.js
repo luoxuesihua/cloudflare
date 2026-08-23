@@ -60,7 +60,7 @@ export class Database {
         await this.db.prepare(`
       CREATE TABLE IF NOT EXISTS sources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        url TEXT NOT NULL,
+        url TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL,
         category TEXT DEFAULT 'general',
         hot_score INTEGER DEFAULT 60,
@@ -74,6 +74,13 @@ export class Database {
       )
     `).run();
 
+        // 为已存在的 sources 表补充 url 唯一约束（旧部署兼容）
+        try {
+            await this.db.prepare(`
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_sources_url ON sources(url)
+            `).run();
+        } catch (e) { /* 索引已存在 */ }
+
         // 兼容旧表结构：添加新字段
         const alterCols = [
             "ALTER TABLE notes ADD COLUMN category TEXT DEFAULT 'general'",
@@ -85,7 +92,8 @@ export class Database {
             "ALTER TABLE users ADD COLUMN phone TEXT",
             "ALTER TABLE comments ADD COLUMN user_id INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN interests TEXT DEFAULT '[]'",
-            "ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'dark'"
+            "ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'dark'",
+            "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1"
         ];
         for (const sql of alterCols) {
             try { await this.db.prepare(sql).run(); } catch (e) { /* 列已存在 */ }
@@ -174,8 +182,7 @@ export class Database {
         if (source) { countBindings.push(`%${source}%`, `%${source}%`) }
         if (tag) { countBindings.push(`%${tag}%`) }
 
-        const countRow = await this.db.prepare(countSql).bind(...countBindings).first('total_count')
-        const total = countRow || 0
+        const total = await this.db.prepare(countSql).bind(...countBindings).first('total_count') ?? 0
 
         // 2) 再分页取数据（保留原排序和兴趣加权）
         const pageSql = finalOrderSql + " LIMIT ? OFFSET ?"
@@ -347,6 +354,26 @@ export class Database {
         ).bind(newHash, userId).run();
     }
 
+    // 获取用户当前 token 版本（用于校验令牌是否有效）
+    async getTokenVersion(userId) {
+        try {
+            const row = await this.db.prepare(
+                "SELECT token_version FROM users WHERE id = ?"
+            ).bind(userId).first('token_version');
+            return row ?? 1;
+        } catch (e) {
+            // token_version 列尚不存在（旧部署迁移中）：降级为不校验
+            return 1;
+        }
+    }
+
+    // 使该用户所有已签发令牌失效（修改密码/改邮箱等敏感操作时调用）
+    async bumpTokenVersion(userId) {
+        return await this.db.prepare(
+            "UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?"
+        ).bind(userId).run();
+    }
+
     // ========== 源管理 ==========
     async findSourceById(id) {
         return await this.db.prepare("SELECT * FROM sources WHERE id = ?").bind(id).first();
@@ -408,7 +435,7 @@ export class Database {
         let sortOrder = 0;
         for (const feed of feeds) {
             const urlBackup = feed.urlBackup || [];
-            // 避免重复：使用 url 作为唯一性判断（INSERT OR IGNORE 无法在无约束列上工作，改用逐条检查）
+            // 去重：sources.url 已设 UNIQUE 约束，INSERT OR IGNORE 会跳过已存在的源
             batch.push(stmt.bind(
                 feed.url, feed.name, feed.category, feed.hotScore || 60,
                 feed.lang || 'zh', feed.desc || '', JSON.stringify(urlBackup), sortOrder++
@@ -455,7 +482,7 @@ export class Database {
         const row = await this.db.prepare(
             'SELECT COUNT(*) as count FROM reading_history WHERE user_id = ?'
         ).bind(userId).first('count');
-        return row || 0;
+        return row ?? 0;
     }
 
     async clearReadingHistory(userId) {

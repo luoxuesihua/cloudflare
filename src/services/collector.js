@@ -538,7 +538,8 @@ const HOT_FETCHERS = { zhihuHot: fetchZhihuHot, baiduHot: fetchBaiduHot };
  * @param {object} env - Cloudflare env
  * @param {object} feed - Feed 配置对象 { url, name, category, hotScore, lang, desc, urlBackup }
  */
-export async function collectSingleSource(env, feed) {
+export async function collectSingleSource(env, feed, options = {}) {
+    const { maxPerSource = 10, onNewPost } = options;
     const db = new Database(env);
     await db.init();
     let collected = 0;
@@ -597,11 +598,12 @@ export async function collectSingleSource(env, feed) {
 
         const summary = extractSummary(markdownDesc, title);
 
-        await db.createPost(0, `NewsBot (${feed.name})`, title, content, feed.category, feed.hotScore || 60, feed.category, feed.name, summary);
+        const newId = await db.createPost(0, `NewsBot (${feed.name})`, title, content, feed.category, feed.hotScore || 60, feed.category, feed.name, summary);
+        if (onNewPost && newId) onNewPost(newId, title, content);
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 14 * 24 * 60 * 60 });
 
         collected++;
-        if (collected >= 10) { log.push(`  ✓ 已达上限(10条)`); break; }
+        if (collected >= maxPerSource) { log.push(`  ✓ 已达上限(${maxPerSource}条)`); break; }
     }
     if (collected > 0) log.push(`  ✓ 入库 ${collected} 条`);
 
@@ -651,6 +653,7 @@ export async function collectNews(env, onNewPost) {
   await db.init();
   let totalCollected = 0;
   const log = [];
+  const CONCURRENCY = 5; // 并发抓取 5 个源，避免单次 Cron 串行超时
 
   // 加载所有硬编码源
   const allFeeds = [...ALL_FEEDS];
@@ -680,77 +683,16 @@ export async function collectNews(env, onNewPost) {
     log.push(`⚠ 加载动态源失败: ${e.message}，使用硬编码源`);
   }
 
-  for (const feed of allFeeds) {
-    log.push(`[${feed.category}] ${feed.name} (${feed.desc || ''})`);
-    try {
-      const urlsToTry = feed.urlBackup ? [feed.url, ...feed.urlBackup] : [feed.url];
-      let response, lastError = null;
-
-      for (const url of urlsToTry) {
-        try {
-          response = await fetchWithTimeout(url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 PanoramaCollector/2.0',
-              'Accept': 'application/xml, text/xml, application/json, */*'
-            },
-            cf: { cacheTtl: 300 }
-          });
-          if (response.ok) { lastError = null; break; }
-          else { lastError = new Error(`HTTP ${response.status}`); }
-        } catch (err) { lastError = err; }
-      }
-      if (lastError) {
-        log.push(`  ⚠ 所有 URL 均失败: ${lastError.message}`);
-        continue;
-      }
-
-      const xmlText = await response.text();
-      const items = parseRSSItems(xmlText);
-      log.push(`  · 解析 ${items.length} 条`);
-
-      let feedCount = 0;
-      for (const itemContent of items) {
-        const fields = extractItemFields(itemContent);
-        if (!fields) continue;
-        const { title, link, description } = fields;
-
-        const markdownDesc = htmlToMarkdown(description);
-        
-        // 放过 dev 和 ai 分类（GitHub Trending, HuggingFace papers 往往含有大量英文）
-        if (feed.category !== 'dev' && feed.category !== 'ai') {
-          if (!isPredominantlyChinese(`${title} ${markdownDesc}`)) continue;
-        }
-
-        // KV 去重
-        const kvKey = `pn:news:${await hashKey(link)}`;
-        const imported = await env.suyuankv.get(kvKey);
-        if (imported) continue;
-
-        // 格式化和入库
-        const tags = feed.category;
-        const content = formatArticle({
-          title, body: markdownDesc, link,
-          sourceName: feed.name,
-          sourceDesc: feed.desc,
-          hotScore: feed.hotScore
-        });
-
-        // 规则摘要：基于正文前几句生成
-        const summary = extractSummary(markdownDesc, title);
-
-        const newId = await db.createPost(0, `NewsBot (${feed.name})`, title, content, tags, feed.hotScore || 50, feed.category, feed.name, summary);
-        if (onNewPost && newId) {
-          onNewPost(newId, title, content);
-        }
-        await env.suyuankv.put(kvKey, 'true', { expirationTtl: 14 * 24 * 60 * 60 });
-
-        feedCount++;
-        totalCollected++;
-        if (feedCount >= 5) { log.push(`  ✓ 已达上限(5条)`); break; }
-      }
-      if (feedCount > 0) log.push(`  ✓ 入库 ${feedCount} 条`);
-    } catch (err) {
-      log.push(`  ❌ 失败: ${err.message}`);
+  // 统一并发采集：每个源最多 5 条，复用 collectSingleSource 逻辑
+  for (let i = 0; i < allFeeds.length; i += CONCURRENCY) {
+    const batch = allFeeds.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(feed => collectSingleSource(env, feed, { maxPerSource: 5, onNewPost })
+        .catch(err => ({ collected: 0, logs: [`⚠ [${feed.category}] ${feed.name}: ${err.message}`] })))
+    );
+    for (const result of results) {
+      if (result.logs) log.push(...result.logs);
+      totalCollected += result.collected;
     }
   }
 
