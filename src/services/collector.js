@@ -302,12 +302,10 @@ function extractItemFields(itemContent) {
 }
 
 // 用 SHA-256 生成稳定的定长去重 key（避免 btoa 对非 Latin1 字符抛错）
-// namespace 区分普通源(news)与热搜源(hot)，避免不同平台热搜因 link 相同互相覆盖
-async function hashKey(input, namespace = 'news') {
+async function hashKey(input) {
   const data = new TextEncoder().encode(input)
   const buf = await crypto.subtle.digest('SHA-256', data)
-  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-  return `${namespace}:${hex}`
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 function decodeHtmlEntities(text) {
@@ -587,7 +585,7 @@ export async function collectSingleSource(env, feed, options = {}) {
             if (!isPredominantlyChinese(`${title} ${markdownDesc}`)) continue;
         }
 
-        const kvKey = `pn:${await hashKey(link)}`;
+        const kvKey = `pn:news:${await hashKey(link)}`;
         const imported = await env.suyuankv.get(kvKey);
         if (imported) continue;
 
@@ -720,7 +718,7 @@ export async function collectHotSearch(env, onNewPost) {
 
       for (const item of items) {
         if (!item.title) continue;
-        const kvKey = `pn:${source.id}:${(await hashKey(item.title, source.id)).slice(0, 40)}`;
+        const kvKey = `pn:hot:${source.id}:${(await hashKey(item.title)).slice(0, 40)}`;
         const imported = await env.suyuankv.get(kvKey);
         if (imported) continue;
 
