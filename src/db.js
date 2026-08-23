@@ -162,14 +162,26 @@ export class Database {
             finalOrderSql = sql
         }
 
-        // 用窗口函数一次性拿到分页数据 + 总数，省去一次独立的 COUNT 查询
-        // 注意：窗口函数在 SQL 执行顺序中先于 LIMIT/OFFSET 求值，故 COUNT(*) OVER () 即全量总数
-        let windowSql = finalOrderSql.replace(/^SELECT id/, 'SELECT id, COUNT(*) OVER () AS total_count')
-        windowSql += " LIMIT ? OFFSET ?"
-        bindings.push(limit, offset)
+        // 1) 先 COUNT 总数：D1 对 COUNT(*) 有优化，比窗口函数全表扫描快得多
+        const countSql = "SELECT COUNT(*) AS total_count FROM notes WHERE 1=1" +
+            (keyword ? " AND (title LIKE ? OR content LIKE ? OR summary LIKE ?)" : "") +
+            (category ? " AND category = ?" : "") +
+            (source ? " AND (source_name LIKE ? OR username LIKE ?)" : "") +
+            (tag ? " AND tags LIKE ?" : "")
+        const countBindings = []
+        if (keyword) { countBindings.push(...bindings.slice(0, 3)) }
+        if (category) { countBindings.push(category) }
+        if (source) { countBindings.push(`%${source}%`, `%${source}%`) }
+        if (tag) { countBindings.push(`%${tag}%`) }
 
-        const { results } = await this.db.prepare(windowSql).bind(...bindings).all()
-        const total = results?.length ? (results[0].total_count || 0) : 0
+        const countRow = await this.db.prepare(countSql).bind(...countBindings).first('total_count')
+        const total = countRow || 0
+
+        // 2) 再分页取数据（保留原排序和兴趣加权）
+        const pageSql = finalOrderSql + " LIMIT ? OFFSET ?"
+        const pageBindings = [...bindings, limit, offset]
+
+        const { results } = await this.db.prepare(pageSql).bind(...pageBindings).all()
 
         return { posts: results || [], total };
     }
