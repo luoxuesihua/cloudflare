@@ -46,16 +46,26 @@
 
 ### 前置条件
 
-- Node.js 18+
-- Wrangler CLI（`npm install -g wrangler`）
+- Node.js 20+（Cloudflare 构建环境使用 Node 24）
+- Wrangler CLI（`npm install -g wrangler`，可选，本地部署时使用）
 - Cloudflare 账号（已绑定 D1 和 KV）
 - Resend 账号（发送验证码邮件）
 
 ### 环境配置
 
+**必需的 Secret / 变量：**
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `RESEND_API_TOKEN`（或 `RESEND_API_KEY`） | Secret | Resend 邮件 API Key（用于发送验证码） |
+| `CLOUDFLARE_API_TOKEN` | Secret（仅 GitHub Actions 部署需要） | Cloudflare API Token |
+| `CLOUDFLARE_ACCOUNT_ID` | Secret（仅 GitHub Actions 部署需要） | Cloudflare 账户 ID |
+
+D1 数据库、KV 命名空间、Workers AI 绑定已在 `wrangler.toml` 中声明，Cloudflare Git 集成部署时会自动关联。
+
 ```bash
-# 配置 Resend API Key（加密存储，不写入代码）
-npx wrangler secret put RESEND_API_KEY
+# 本地部署时配置 Resend API Key（加密存储，不写入代码）
+npx wrangler secret put RESEND_API_TOKEN
 
 # 部署新版本
 npx wrangler deploy
@@ -87,12 +97,27 @@ cd frontend && npm run dev
 
 ### 部署到 Cloudflare
 
+本项目支持两种部署方式：
+
+**方式一：Cloudflare Direct Git 集成（推荐，已启用）**
+
+在 Cloudflare Dashboard 中将本仓库连接为 Worker 的 Git 数据源后，推送 `main` 分支即自动触发构建部署。构建环境会执行 `wrangler.toml` 中的 `[build].command`：
+
+```toml
+[build]
+command = "cd frontend && npm install && npm run build"
+```
+
+> ⚠️ 该命令**必须自包含前端依赖安装**。Cloudflare 构建环境默认只安装仓库根目录依赖，不会执行 GitHub Actions 里的 `npm install` 步骤，因此 `npm install` 不能省略，否则会出现 `sh: 1: vite: not found` 构建失败。
+
+**方式二：本地手动部署**
+
 ```bash
-# 一键编译前端 + 部署 Worker
+# 一键编译前端 + 部署 Worker（predeploy 已配置前端构建）
 npm run deploy
 ```
 
-`wrangler.toml` 已配置 `[build]` 阶段自动执行 `cd frontend && npm install && npm run build`，与 `npm run deploy` 的 `predeploy` 双重保障。
+> 注：`.github/workflows/deploy.yml` 也提供 GitHub Actions 自动部署，使用 `cloudflare/wrangler-action`，需要仓库 Secrets 中配置 `CLOUDFLARE_API_TOKEN` 与 `CLOUDFLARE_ACCOUNT_ID`。
 
 ## 功能特性
 
