@@ -301,6 +301,13 @@ function extractItemFields(itemContent) {
     return { title, link, description }
 }
 
+// 用 SHA-256 生成稳定的定长去重 key（避免 btoa 对非 Latin1 字符抛错）
+async function hashKey(input) {
+  const data = new TextEncoder().encode(input)
+  const buf = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 function decodeHtmlEntities(text) {
   if (!text) return '';
   return text
@@ -458,39 +465,6 @@ function extractSummary(text, title) {
 
 // ==================== 热搜抓取函数 ====================
 
-async function fetchWeiboHot(env) {
-  try {
-    const resp = await fetchWithTimeout('https://weibo.com/ajax/side/hotSearch', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0', 'Referer': 'https://weibo.com', 'Cookie': 'SUB=_2AkMR' },
-      cf: { cacheTtl: 600 }
-    }, 10000);
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    const allItems = data?.data?.realtime || [];
-    
-    // AI & IT 相关的关键词
-    const keywords = ['AI', '人工智能', '大模型', '芯片', '半导体', '苹果', '华为', '微软', '谷歌', '腾讯', '阿里', '百度', '字节', '自动驾驶', '机器人', '程序员', '代码', '软件', '硬件', '科技', 'IT', '系统', '网络安全'];
-    
-    // 根据关键词过滤
-    const filteredItems = allItems.filter(item => {
-      const text = ((item.word || '') + (item.note || '')).toUpperCase();
-      return keywords.some(kw => text.includes(kw.toUpperCase()));
-    });
-    
-    const items = filteredItems.slice(0, 10);
-    
-    return items.map((item, i) => ({
-      title: item.word || item.note || '',
-      link: `https://s.weibo.com/weibo?q=${encodeURIComponent(item.word || '')}`,
-      description: item.note || '',
-      hotValue: item.num || 0,
-      rank: item.rank || i + 1,
-      source: 'weibo',
-      sourceName: '微博热搜'
-    }));
-  } catch { return []; }
-}
-
 async function fetchZhihuHot(env) {
   try {
     const resp = await fetchWithTimeout('https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=20', {
@@ -546,7 +520,7 @@ async function fetchBaiduHot(env) {
   } catch { return []; }
 }
 
-const HOT_FETCHERS = { weiboHot: fetchWeiboHot, zhihuHot: fetchZhihuHot, baiduHot: fetchBaiduHot };
+const HOT_FETCHERS = { zhihuHot: fetchZhihuHot, baiduHot: fetchBaiduHot };
 
 // ==================== 主采集流程 ====================
 
@@ -604,7 +578,7 @@ export async function collectSingleSource(env, feed) {
             if (!isPredominantlyChinese(`${title} ${markdownDesc}`)) continue;
         }
 
-        const kvKey = `pn:news:${btoa(encodeURIComponent(link)).replace(/=/g, '')}`;
+        const kvKey = `pn:news:${await hashKey(link)}`;
         const imported = await env.suyuankv.get(kvKey);
         if (imported) continue;
 
@@ -742,7 +716,7 @@ export async function collectNews(env, onNewPost) {
         }
 
         // KV 去重
-        const kvKey = `pn:news:${btoa(encodeURIComponent(link)).replace(/=/g, '')}`;
+        const kvKey = `pn:news:${await hashKey(link)}`;
         const imported = await env.suyuankv.get(kvKey);
         if (imported) continue;
 
@@ -796,7 +770,7 @@ export async function collectHotSearch(env, onNewPost) {
 
       for (const item of items) {
         if (!item.title) continue;
-        const kvKey = `pn:hot:${source.id}:${btoa(encodeURIComponent(item.title)).replace(/=/g, '').substring(0, 40)}`;
+        const kvKey = `pn:hot:${source.id}:${(await hashKey(item.title)).slice(0, 40)}`;
         const imported = await env.suyuankv.get(kvKey);
         if (imported) continue;
 

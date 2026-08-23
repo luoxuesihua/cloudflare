@@ -2,13 +2,13 @@ import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { collectNews, collectHotSearch } from '../services/collector.js'
 import { generateAISummary, extractKeyPoints } from '../services/summarizer.js'
-import { withCache, CACHE_TTL, invalidateKVCacheByTag, CACHE_TAGS } from '../cache.js'
+import { withCache, CACHE_TTL, invalidateCacheAPI } from '../cache.js'
 
-// 缓存失效辅助：写操作后使文章列表/统计/详情缓存失效
+// 缓存失效辅助：写操作后使文章相关无参缓存失效
+// 说明：带查询参数的列表/详情 URL 无法枚举，依赖 withCache 设置的较短 TTL 自然过期；
+// 此处仅删除可确定的无参接口（如 /api/posts/stats），其余靠 TTL 兜底。
 function invalidatePostCaches(c, env) {
-  // 通过递增版本号失效 KV 缓存
-  invalidateKVCacheByTag(env, CACHE_TAGS.POSTS, c.executionCtx)
-  invalidateKVCacheByTag(env, CACHE_TAGS.POST_DETAIL, c.executionCtx)
+  invalidateCacheAPI(c, ['/api/posts/stats'])
 }
 
 const posts = new Hono()
@@ -226,7 +226,7 @@ posts.post('/:id/comments', async (c) => {
     if (!post) return c.json({ error: '文章不存在' }, 404)
 
     const commentId = await db.createComment(postId, user.id, user.username, sanitizedContent)
-    invalidateKVCacheByTag(c.env, CACHE_TAGS.COMMENTS, c.executionCtx)
+    invalidateCacheAPI(c, [`/api/posts/${postId}/comments`])
     return c.json({
         success: true,
         comment: {
@@ -257,7 +257,7 @@ posts.delete('/:id/comments/:commentId', async (c) => {
     }
 
     await db.deleteComment(commentId)
-    invalidateKVCacheByTag(c.env, CACHE_TAGS.COMMENTS, c.executionCtx)
+    invalidateCacheAPI(c, [`/api/posts/${postId}/comments`])
     return c.json({ success: true })
 })
 

@@ -34,7 +34,18 @@ function renderMarkdown(text) {
   return DOMPurify.sanitize(raw, {
     ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr', 'strong', 'em', 'a', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'del', 'sup', 'sub'],
     ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class'],
-    ADD_ATTR: ['target']
+    ADD_ATTR: ['target', 'rel'],
+    // 仅允许 http/https 资源，拦截 javascript: 等危险协议
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+    // 为外链统一加上安全属性
+    HOOKS: {
+      afterSanitizeAttributes: (node) => {
+        if (node.tagName === 'A' && node.getAttribute('href')) {
+          node.setAttribute('target', '_blank')
+          node.setAttribute('rel', 'noopener noreferrer')
+        }
+      }
+    }
   })
 }
 

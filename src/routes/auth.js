@@ -110,6 +110,8 @@ auth.post('/send-code', async (c) => {
 
     // 存储验证码到 KV，5 分钟过期
     await c.env.suyuankv.put(`code:${email}`, code, { expirationTtl: 300 })
+    // 重置失败计数（防止暴力破解）
+    await c.env.suyuankv.put(`code_fail:${email}`, '0', { expirationTtl: 300 })
     // 频率限制标记，60 秒过期
     await c.env.suyuankv.put(rateLimitKey, '1', { expirationTtl: 60 })
 
@@ -125,9 +127,18 @@ auth.post('/register', async (c) => {
     const pwdError = validatePassword(password)
     if (pwdError) return c.json({ error: pwdError }, 400)
 
-    // 校验验证码
+    // 校验验证码（含防暴破：失败 5 次即作废，需重新获取）
+    const failKey = `code_fail:${email}`
+    const failCount = parseInt(await c.env.suyuankv.get(failKey) || '0', 10)
+    if (failCount >= 5) {
+        await c.env.suyuankv.delete(`code:${email}`)
+        await c.env.suyuankv.delete(failKey)
+        return c.json({ error: '验证码尝试次数过多，请重新获取' }, 429)
+    }
+
     const storedCode = await c.env.suyuankv.get(`code:${email}`)
     if (!storedCode || storedCode !== code) {
+        await c.env.suyuankv.put(failKey, String(failCount + 1), { expirationTtl: 300 })
         return c.json({ error: '验证码错误或已过期' }, 400)
     }
 
@@ -189,9 +200,18 @@ auth.post('/login-code', async (c) => {
     const { email, code } = await c.req.json()
     if (!email || !code) return c.json({ error: '请填写邮箱和验证码' }, 400)
 
-    // 校验验证码
+    // 校验验证码（含防暴破：失败 5 次即作废，需重新获取）
+    const failKey = `code_fail:${email}`
+    const failCount = parseInt(await c.env.suyuankv.get(failKey) || '0', 10)
+    if (failCount >= 5) {
+        await c.env.suyuankv.delete(`code:${email}`)
+        await c.env.suyuankv.delete(failKey)
+        return c.json({ error: '验证码尝试次数过多，请重新获取' }, 429)
+    }
+
     const storedCode = await c.env.suyuankv.get(`code:${email}`)
     if (!storedCode || storedCode !== code) {
+        await c.env.suyuankv.put(failKey, String(failCount + 1), { expirationTtl: 300 })
         return c.json({ error: '验证码错误或已过期' }, 400)
     }
 

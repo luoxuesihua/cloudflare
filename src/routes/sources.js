@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { collectSingleSource, collectAllDynamicSources, ALL_FEEDS } from '../services/collector.js'
-import { withCache, CACHE_TTL, invalidateKVCacheByTag, CACHE_TAGS } from '../cache.js'
+import { withCache, CACHE_TTL, invalidateCacheAPI } from '../cache.js'
 
 const sources = new Hono()
 
@@ -62,7 +62,7 @@ sources.post('/', async (c) => {
 
     const db = getDb(c)
     const id = await db.createSource({ url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder })
-    invalidateKVCacheByTag(c.env, CACHE_TAGS.POSTS, c.executionCtx)
+    invalidateCacheAPI(c, ['/api/sources'])
     return c.json({ success: true, id }, 201)
 })
 

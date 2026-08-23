@@ -2,6 +2,9 @@
 import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { dedupedFetch, fetchWithSWR, getSessionCache, setSessionCache } from '../utils/api'
+import { useAuth } from '../composables/useAuth'
+
+const { getHeaders } = useAuth()
 
 const posts = ref([])
 const isLoading = ref(true)       // 首次无缓存时为 true，有缓存数据后不再显示 loading
@@ -70,7 +73,7 @@ async function silentRefresh() {
       params.set('limit', String(PAGE_SIZE))
       params.set('offset', '0')
       const url = `/api/posts?${params.toString()}`
-      const res = await dedupedFetch(url)
+      const res = await dedupedFetch(url, { headers: getHeaders() })
       const data = await res.json()
       const newPosts = data.posts || data
       
@@ -147,7 +150,7 @@ async function fetchPosts(append = false) {
     params.set('offset', String(append ? posts.value.length : 0))
 
     const url = `/api/posts?${params.toString()}`
-    const res = await dedupedFetch(url, { signal: abortController.signal })
+    const res = await dedupedFetch(url, { signal: abortController.signal, headers: getHeaders() })
     const data = await res.json()
     const newPosts = data.posts || data
 

@@ -32,7 +32,7 @@ const CSP = [
     "img-src 'self' data:",
     "font-src 'self' https://fonts.gstatic.com data:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+    "script-src 'self'",
     "connect-src 'self'",
     'upgrade-insecure-requests'
 ].join('; ')
@@ -57,14 +57,6 @@ function applySecurityHeaders(headers) {
 
 function isAllowedOrigin(c, origin) {
     return origin && allowedOrigins(c.env).includes(origin)
-}
-
-async function deriveTempKey(ip, ua) {
-    const data = new TextEncoder().encode(ip + ua.slice(0, 50))
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-    return `csrf:${hashHex.slice(0, 32)}`
 }
 
 function applyApiCors(c) {
@@ -134,10 +126,15 @@ async function rateLimit(c, next) {
 }
 
 // ========== CSRF 保护中间件 ==========
-// 对所有非 GET/HEAD/OPTIONS 的写操作请求进行 CSRF 验证
+// 本项目使用 `Authorization: Bearer <token>` 作为鉴权方式（token 存于
+// localStorage，而非 Cookie），因此不存在传统的 Cookie-based CSRF 风险。
+// 这里额外做一层"同源 + 双重提交"校验作为纵深防御：
+//   1. 仅对 /api 下的写请求（非 GET/HEAD/OPTIONS）生效；
+//   2. 已登录请求需携带与 KV 中 session 绑定的 X-CSRF-Token；
+//   3. 未登录请求（注册/登录）无需 CSRF（无会话凭证可被盗用），直接放行。
 async function csrfProtection(c, next) {
     const method = c.req.method.toUpperCase()
-    
+
     // 只对会改变状态的请求进行验证
     if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
         return await next()
@@ -149,29 +146,19 @@ async function csrfProtection(c, next) {
         return await next()
     }
 
-    // 从 Header 获取 CSRF Token
+    // 未登录状态（无 Authorization）的写请求（如 send-code/register/login）
+    // 不存在 CSRF 风险，直接放行
+    const sessionId = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (!sessionId) {
+        return await next()
+    }
+
+    // 已登录请求：校验双重提交的 CSRF Token
     const csrfToken = c.req.header('X-CSRF-Token')
     if (!csrfToken) {
         return c.json({ error: '缺少 CSRF Token，请刷新页面重试' }, 403)
     }
 
-    // 从 Cookie 或 Session 获取存储的 token 进行比对
-    const sessionId = c.req.header('Authorization')?.replace('Bearer ', '')
-    if (!sessionId) {
-        // 未登录状态下的请求也需要验证（如注册、登录）
-        // 使用 IP + User-Agent 作为 session 标识符的替代
-        const ip = c.req.header('CF-Connecting-IP') || 'unknown'
-        const ua = c.req.header('User-Agent') || ''
-        const tempKey = await deriveTempKey(ip, ua)
-
-        const storedToken = await c.env.suyuankv.get(tempKey)
-        if (storedToken !== csrfToken) {
-            return c.json({ error: 'CSRF 验证失败，请刷新页面重试' }, 403)
-        }
-        return await next()
-    }
-
-    // 已登录用户从 KV 获取 CSRF Token
     const storedCsrf = await c.env.suyuankv.get(`csrf:${sessionId}`)
     if (!storedCsrf || storedCsrf !== csrfToken) {
         return c.json({ error: 'CSRF 验证失败，请重新登录' }, 403)
@@ -192,15 +179,9 @@ app.get('/api/csrf-token', async (c) => {
         await c.env.suyuankv.put(`csrf:${sessionId}`, token, { 
             expirationTtl: 7200 // 2小时有效
         })
-    } else {
-        // 未登录用户：使用 IP + UA 作为临时标识
-        const ip = c.req.header('CF-Connecting-IP') || 'unknown'
-        const ua = c.req.header('User-Agent') || ''
-        const tempKey = await deriveTempKey(ip, ua)
-        await c.env.suyuankv.put(tempKey, token, { 
-            expirationTtl: 3600 // 1小时有效
-        })
     }
+    // 未登录用户：本项目鉴权基于 Authorization header（非 Cookie），
+    // 未登录写请求（注册/登录）不存在 CSRF 风险，无需存储 token。
     
     return c.json({ csrf_token: token })
 })

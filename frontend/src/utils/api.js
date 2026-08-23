@@ -117,7 +117,7 @@ function clearOldCaches() {
  * @param {function} options.onFreshData - 收到新数据时的回调
  * @returns {Promise<any>} 新数据的解析结果
  */
-export async function fetchWithSWR(url, cacheKey, { ttlMs = 120000, onCacheData, onFreshData } = {}) {
+export async function fetchWithSWR(url, cacheKey, { ttlMs = 120000, onCacheData, onFreshData, headers } = {}) {
   // 1. 检查 sessionStorage 缓存
   const cached = getSessionCache(cacheKey, ttlMs)
   if (cached && onCacheData) {
@@ -126,7 +126,7 @@ export async function fetchWithSWR(url, cacheKey, { ttlMs = 120000, onCacheData,
 
   // 2. 发起网络请求（去重）
   try {
-    const res = await dedupedFetch(url)
+    const res = await dedupedFetch(url, headers ? { headers } : {})
     if (res.ok) {
       const data = await res.json()
       setSessionCache(cacheKey, data)
