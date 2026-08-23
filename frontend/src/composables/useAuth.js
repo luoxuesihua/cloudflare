@@ -83,6 +83,16 @@ export function useAuth() {
     }
 
     function logout() {
+        const currentToken = token.value
+        if (currentToken) {
+            fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${currentToken}`
+                }
+            }).catch(() => { /* 静默失败 */ })
+        }
         token.value = ''
         user.value = null
         csrfToken.value = ''

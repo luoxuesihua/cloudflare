@@ -29,7 +29,7 @@ const CSP = [
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "img-src 'self' data:",
+    "img-src 'self' data: https:",
     "font-src 'self' https://fonts.gstatic.com data:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "script-src 'self' https://static.cloudflareinsights.com",
@@ -72,12 +72,8 @@ function applyApiCors(c) {
 }
 
 function isSpaRoute(pathname) {
-    return pathname === '/'
-        || pathname === '/login'
-        || pathname === '/register'
-        || pathname === '/write'
-        || pathname === '/admin'
-        || /^\/post\/[^/]+\/?$/.test(pathname)
+    // 任何非 API 且非物理静态文件的路径均作为 SPA 路由处理
+    return !pathname.startsWith('/api/') && !isStaticAssetPath(pathname)
 }
 
 function isStaticAssetPath(pathname) {

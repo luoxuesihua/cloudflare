@@ -81,6 +81,33 @@ posts.get('/stats', withCache(CACHE_TTL.STATS, async (c) => {
     return c.json(stats)
 }))
 
+// ========== 阅读历史接口 (必须置于 /:id 之前，避免被捕获为文章ID) ==========
+
+// 获取阅读历史列表
+posts.get('/history', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '请先登录' }, 401)
+
+    const limit = Math.min(parseInt(c.req.query('limit') || '20', 10), 50)
+    const offset = parseInt(c.req.query('offset') || '0', 10)
+    
+    const db = getDb(c)
+    const history = await db.getReadingHistory(user.id, limit, offset)
+    const count = await db.getReadingHistoryCount(user.id)
+    
+    return c.json({ history, total: count })
+})
+
+// 清空阅读历史
+posts.delete('/history', async (c) => {
+    const user = await getUser(c)
+    if (!user) return c.json({ error: '请先登录' }, 401)
+
+    const db = getDb(c)
+    await db.clearReadingHistory(user.id)
+    return c.json({ success: true })
+})
+
 // 获取单篇文章 — 缓存 5 分钟，文章发布后很少修改
 posts.get('/:id', withCache(CACHE_TTL.POST_DETAIL, async (c) => {
     const id = c.req.param('id')
@@ -253,6 +280,7 @@ posts.delete('/:id/comments/:commentId', async (c) => {
     if (!user) return c.json({ error: '请先登录' }, 401)
 
     const db = getDb(c)
+    const postId = parseInt(c.req.param('id'))
     const commentId = parseInt(c.req.param('commentId'))
     
     const comment = await db.findCommentById(commentId)
@@ -264,11 +292,11 @@ posts.delete('/:id/comments/:commentId', async (c) => {
     }
 
     await db.deleteComment(commentId)
-    invalidateCacheAPI(c, [`/api/posts/${postId}/comments`])
+    if (postId) {
+        invalidateCacheAPI(c, [`/api/posts/${postId}/comments`])
+    }
     return c.json({ success: true })
 })
-
-// ========== 阅读历史接口 ==========
 
 // 记录阅读历史（用户访问文章详情时调用）
 posts.post('/:id/read', async (c) => {
@@ -283,31 +311,6 @@ posts.post('/:id/read', async (c) => {
     if (!post) return c.json({ error: '文章不存在' }, 404)
 
     await db.recordReadingHistory(user.id, postId)
-    return c.json({ success: true })
-})
-
-// 获取阅读历史列表
-posts.get('/history', async (c) => {
-    const user = await getUser(c)
-    if (!user) return c.json({ error: '请先登录' }, 401)
-
-    const limit = Math.min(parseInt(c.req.query('limit') || '20', 10), 50)
-    const offset = parseInt(c.req.query('offset') || '0', 10)
-    
-    const db = getDb(c)
-    const history = await db.getReadingHistory(user.id, limit, offset)
-    const count = await db.getReadingHistoryCount(user.id)
-    
-    return c.json({ history, total: count })
-})
-
-// 清空阅读历史
-posts.delete('/history', async (c) => {
-    const user = await getUser(c)
-    if (!user) return c.json({ error: '请先登录' }, 401)
-
-    const db = getDb(c)
-    await db.clearReadingHistory(user.id)
     return c.json({ success: true })
 })
 

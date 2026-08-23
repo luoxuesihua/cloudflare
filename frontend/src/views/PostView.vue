@@ -21,6 +21,8 @@ const newComment = ref('')
 const isSubmittingComment = ref(false)
 
 const isLoggedIn = computed(() => auth.isLoggedIn.value)
+const isAdmin = computed(() => auth.isAdmin.value)
+const currentUserId = computed(() => auth.user.value?.id)
 
 // 配置 marked
 marked.setOptions({
@@ -79,7 +81,6 @@ onMounted(async () => {
       throw new Error(text ? `${res.status}: ${text}` : '文章不存在')
     }
     post.value = await res.json()
-    fetchAISummary()
     fetchComments()
     
     // 记录阅读历史（如果用户已登录）
@@ -94,8 +95,9 @@ onMounted(async () => {
   }
 })
 
-async function fetchAISummary() {
-  if (!auth.isLoggedIn.value) return
+async function fetchAISummary(force = false) {
+  if (!isAdmin.value) return
+  if (post.value?.ai_summary && !force) return
 
   try {
     isLoadingAI.value = true
@@ -105,7 +107,7 @@ async function fetchAISummary() {
     })
     if (res.ok) {
       const data = await res.json()
-      if (data.ai_summary && !post.value.ai_summary) {
+      if (data.ai_summary) {
         post.value.ai_summary = data.ai_summary
       }
       if (data.key_points) {
@@ -149,6 +151,24 @@ async function submitComment() {
   finally { isSubmittingComment.value = false }
 }
 
+async function deleteComment(commentId) {
+  if (!confirm('确定要删除此评论吗？')) return
+  try {
+    const res = await fetch(`/api/posts/${route.params.id}/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: auth.getHeaders()
+    })
+    if (res.ok) {
+      comments.value = comments.value.filter(c => c.id !== commentId)
+      commentCount.value = Math.max(0, commentCount.value - 1)
+    } else {
+      alert('删除失败')
+    }
+  } catch {
+    alert('网络异常')
+  }
+}
+
 function commentTimeAgo(dateStr) {
   if (!dateStr) return ''
   const now = Date.now()
@@ -181,11 +201,16 @@ function commentTimeAgo(dateStr) {
       <hr class="divider" />
 
       <!-- AI 摘要 / 要点提炼区域 -->
-      <div v-if="post.ai_summary || post.summary || aiKeyPoints" class="ai-summary-box">
+      <div v-if="post.ai_summary || post.summary || aiKeyPoints || isAdmin" class="ai-summary-box">
         <div class="ai-summary-header">
-          <span class="ai-icon">🤖</span>
-          <span class="ai-label">{{ post.ai_summary ? 'AI 智能摘要' : '内容摘要' }}</span>
-          <span v-if="isLoadingAI" class="ai-loading">生成中…</span>
+          <div class="ai-header-left">
+            <span class="ai-icon">🤖</span>
+            <span class="ai-label">{{ post.ai_summary ? 'AI 智能摘要' : '内容摘要' }}</span>
+            <span v-if="isLoadingAI" class="ai-loading">生成中…</span>
+          </div>
+          <button v-if="isAdmin" class="ai-action-btn" @click="fetchAISummary(true)" :disabled="isLoadingAI" title="管理员专属：调用 Workers AI 生成/刷新摘要">
+            {{ isLoadingAI ? '提炼中…' : (post.ai_summary ? '重新提炼' : '生成 AI 摘要') }}
+          </button>
         </div>
 
         <!-- AI / 规则摘要 -->
@@ -238,7 +263,17 @@ function commentTimeAgo(dateStr) {
           <div v-for="comment in comments" :key="comment.id" class="comment-item">
             <div class="comment-header">
               <span class="comment-user">{{ comment.username }}</span>
-              <span class="comment-time">{{ commentTimeAgo(comment.created_at) }}</span>
+              <div class="comment-meta-right">
+                <span class="comment-time">{{ commentTimeAgo(comment.created_at) }}</span>
+                <button
+                  v-if="isLoggedIn && (comment.user_id === currentUserId || isAdmin)"
+                  class="comment-del-btn"
+                  @click="deleteComment(comment.id)"
+                  title="删除评论"
+                >
+                  删除
+                </button>
+              </div>
             </div>
             <p class="comment-content">{{ comment.content }}</p>
           </div>
@@ -311,9 +346,33 @@ function commentTimeAgo(dateStr) {
 }
 .ai-summary-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+.ai-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-action-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #C4B5FD;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.ai-action-btn:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.3);
+  color: #fff;
+}
+.ai-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .ai-icon {
   font-size: 1.1rem;
@@ -509,6 +568,25 @@ function commentTimeAgo(dateStr) {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+}
+.comment-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.comment-del-btn {
+  background: none;
+  border: none;
+  color: #EF4444;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.comment-del-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #F87171;
 }
 .comment-user {
   font-weight: 700;

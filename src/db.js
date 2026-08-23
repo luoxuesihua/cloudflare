@@ -4,6 +4,7 @@ let schemaInitPromise = null
 
 export class Database {
     constructor(env) {
+        this.env = env
         this.db = env.suyuan
     }
 
@@ -454,11 +455,12 @@ export class Database {
     }
 
     async seedDefaultSources(feeds) {
+        if (!feeds || feeds.length === 0) return 0;
         const stmt = this.db.prepare(
             `INSERT OR IGNORE INTO sources (url, name, category, hot_score, lang, description, url_backup, is_active, sort_order)
              VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`
         );
-        // D1 批量写入需要逐个执行
+        // D1 批量执行提高性能
         const batch = [];
         let sortOrder = 0;
         for (const feed of feeds) {
@@ -469,10 +471,16 @@ export class Database {
                 feed.lang || 'zh', feed.desc || '', JSON.stringify(urlBackup), sortOrder++
             ));
         }
-        for (const b of batch) {
-            try { await b.run(); } catch (e) {
-                // 仅忽略 UNIQUE 约束冲突（重复源），其他错误抛出
-                if (!e.message?.includes('UNIQUE')) throw e
+        if (batch.length > 0) {
+            try {
+                await this.db.batch(batch);
+            } catch (e) {
+                // 降级逐个执行
+                for (const b of batch) {
+                    try { await b.run(); } catch (err) {
+                        if (!err.message?.includes('UNIQUE')) console.warn('[db] seed source 失败:', err.message);
+                    }
+                }
             }
         }
         return batch.length;

@@ -119,11 +119,12 @@ async function verifyCode(c, namespace, email, code) {
 // 发送验证码（通用：注册/登录共用）
 auth.post('/send-code', async (c) => {
     const { email, type } = await c.req.json()
-    if (!email) return c.json({ error: '请填写邮箱' }, 400)
+    const cleanEmail = email ? email.trim().toLowerCase() : ''
+    if (!cleanEmail) return c.json({ error: '请填写邮箱' }, 400)
 
     // type: 'register' | 'login'
     const db = getDb(c)
-    const existingUser = await db.findUserByEmail(email)
+    const existingUser = await db.findUserByEmail(cleanEmail)
 
     if (type === 'register' && existingUser) {
         return c.json({ error: '该邮箱已被注册' }, 409)
@@ -133,7 +134,7 @@ auth.post('/send-code', async (c) => {
     }
 
     // 防止频繁发送：检查是否 60 秒内已发送
-    const rateLimitKey = `code_rate:${type}:${email}`
+    const rateLimitKey = `code_rate:${type}:${cleanEmail}`
     const lastSent = await c.env.suyuankv.get(rateLimitKey)
     if (lastSent) {
         return c.json({ error: '请求过于频繁，请稍后再试' }, 429)
@@ -142,15 +143,15 @@ auth.post('/send-code', async (c) => {
     const code = generateCode()
 
     try {
-        await sendVerificationCode(c.env, email, code)
+        await sendVerificationCode(c.env, cleanEmail, code)
     } catch (e) {
         return c.json({ error: '验证码发送失败，请稍后重试' }, 500)
     }
 
     // 存储验证码到 KV，5 分钟过期（按 type 命名空间隔离注册/登录）
-    await c.env.suyuankv.put(`code:${type}:${email}`, code, { expirationTtl: 300 })
+    await c.env.suyuankv.put(`code:${type}:${cleanEmail}`, code, { expirationTtl: 300 })
     // 重置失败计数（防止暴力破解）
-    await c.env.suyuankv.put(`code_fail:${type}:${email}`, '0', { expirationTtl: 300 })
+    await c.env.suyuankv.put(`code_fail:${type}:${cleanEmail}`, '0', { expirationTtl: 300 })
     // 频率限制标记，60 秒过期
     await c.env.suyuankv.put(rateLimitKey, '1', { expirationTtl: 60 })
 
@@ -160,43 +161,47 @@ auth.post('/send-code', async (c) => {
 // ========== 注册（需验证码）==========
 auth.post('/register', async (c) => {
     const { email, password, phone, username, code } = await c.req.json()
-    if (!email || !password || !code) return c.json({ error: '请填写邮箱、密码和验证码' }, 400)
+    const cleanEmail = email ? email.trim().toLowerCase() : ''
+    const cleanPhone = phone ? phone.trim() : ''
+    const cleanUsername = username ? username.trim() : ''
+
+    if (!cleanEmail || !password || !code) return c.json({ error: '请填写邮箱、密码和验证码' }, 400)
 
     // 密码复杂度校验
     const pwdError = validatePassword(password)
     if (pwdError) return c.json({ error: pwdError }, 400)
 
     // 校验验证码（含防暴破：失败 5 次即作废，需重新获取）
-    const v = await verifyCode(c, 'register', email, code)
+    const v = await verifyCode(c, 'register', cleanEmail, code)
     if (!v.ok) return c.json({ error: v.error }, v.status)
 
     const db = getDb(c)
 
     // 检查邮箱唯一性
-    const existingEmail = await db.findUserByEmail(email)
+    const existingEmail = await db.findUserByEmail(cleanEmail)
     if (existingEmail) return c.json({ error: '该邮箱已被注册' }, 409)
 
     // 用户名默认使用邮箱前缀
-    const finalUsername = username || email.split('@')[0]
+    const finalUsername = cleanUsername || cleanEmail.split('@')[0]
     // 检查用户名唯一性
     const existingName = await db.findUserByUsername(finalUsername)
     if (existingName) return c.json({ error: '用户名已被占用' }, 409)
 
     // 检查手机号唯一性
-    if (phone) {
-        const existingPhone = await db.findUserByPhone(phone)
+    if (cleanPhone) {
+        const existingPhone = await db.findUserByPhone(cleanPhone)
         if (existingPhone) return c.json({ error: '该手机号已被注册' }, 409)
     }
 
     const hash = await hashPassword(password)
     const userCount = await db.getUserCount()
     const role = userCount === 0 ? 'admin' : 'user'
-    await db.createUser(finalUsername, email, phone || '', hash, role)
+    await db.createUser(finalUsername, cleanEmail, cleanPhone, hash, role)
 
     // 验证码用完即删
-    await c.env.suyuankv.delete(`code:register:${email}`)
+    await c.env.suyuankv.delete(`code:register:${cleanEmail}`)
 
-    const newUser = await db.findUserByEmail(email)
+    const newUser = await db.findUserByEmail(cleanEmail)
     const { token, userData } = await issueToken(c, newUser)
     return c.json({ token, ...userData }, 201)
 })
@@ -204,9 +209,10 @@ auth.post('/register', async (c) => {
 // ========== 密码登录 ==========
 auth.post('/login', async (c) => {
     const { username, password } = await c.req.json()
+    const cleanAccount = username ? username.trim() : ''
     const db = getDb(c)
 
-    const user = await db.findUserByName(username)
+    const user = await db.findUserByName(cleanAccount)
 
     if (!user || !await verifyPassword(password, user.password_hash)) {
         return c.json({ error: '账号或密码错误' }, 401)
@@ -225,22 +231,33 @@ auth.post('/login', async (c) => {
 // ========== 验证码登录 ==========
 auth.post('/login-code', async (c) => {
     const { email, code } = await c.req.json()
-    if (!email || !code) return c.json({ error: '请填写邮箱和验证码' }, 400)
+    const cleanEmail = email ? email.trim().toLowerCase() : ''
+    if (!cleanEmail || !code) return c.json({ error: '请填写邮箱和验证码' }, 400)
 
     // 校验验证码（含防暴破：失败 5 次即作废，需重新获取）
-    const v = await verifyCode(c, 'login', email, code)
+    const v = await verifyCode(c, 'login', cleanEmail, code)
     if (!v.ok) return c.json({ error: v.error }, v.status)
 
     const db = getDb(c)
-    const user = await db.findUserByEmail(email)
+    const user = await db.findUserByEmail(cleanEmail)
     if (!user) return c.json({ error: '用户不存在' }, 404)
 
     const tokenInfo = await issueToken(c, user)
 
     // 验证码用完即删
-    await c.env.suyuankv.delete(`code:login:${email}`)
+    await c.env.suyuankv.delete(`code:login:${cleanEmail}`)
 
     return c.json({ token: tokenInfo.token, ...tokenInfo.userData })
+})
+
+// ========== 登出销毁令牌 ==========
+auth.post('/logout', async (c) => {
+    const token = c.req.header('Authorization')?.replace('Bearer ', '')
+    if (token) {
+        await c.env.suyuankv.delete(token)
+        await c.env.suyuankv.delete(`csrf:${token}`)
+    }
+    return c.json({ success: true, message: '已安全登出' })
 })
 
 // ========== 用户信息 ==========

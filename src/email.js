@@ -2,17 +2,22 @@
  * 邮件发送工具 - 基于 Resend API
  */
 
-// 生成 6 位数字验证码
+// 生成 6 位加密安全的数字验证码
 export function generateCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString()
+    const array = new Uint32Array(1)
+    crypto.getRandomValues(array)
+    // 映射到 100000 - 999999
+    const code = 100000 + (array[0] % 900000)
+    return code.toString()
 }
 
 // 通过 Resend 发送验证码邮件
 export async function sendVerificationCode(env, toEmail, code) {
+    const apiKey = env.RESEND_API_KEY || env.RESEND_API_TOKEN
     const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+            'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({

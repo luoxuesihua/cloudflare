@@ -301,9 +301,23 @@ function extractItemFields(itemContent) {
     return { title, link, description }
 }
 
+function normalizeArticleUrl(url) {
+  if (!url) return ''
+  try {
+    const u = new URL(url.trim())
+    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'from', 'spm', 'ref', 'source', 'fbclid', 'gclid']
+    trackingParams.forEach(p => u.searchParams.delete(p))
+    u.hash = ''
+    return u.toString()
+  } catch {
+    return url.trim()
+  }
+}
+
 // 用 SHA-256 生成稳定的定长去重 key（避免 btoa 对非 Latin1 字符抛错）
 async function hashKey(input) {
-  const data = new TextEncoder().encode(input)
+  const normalized = normalizeArticleUrl(input)
+  const data = new TextEncoder().encode(normalized)
   const buf = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
