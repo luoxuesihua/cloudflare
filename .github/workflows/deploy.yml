@@ -28,5 +28,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: '3.91.0'
+          # 必须与根 package.json 保持 v4：wrangler 3 不支持 assets.run_worker_first
+          wranglerVersion: '4.100.0'
           command: deploy --minify
