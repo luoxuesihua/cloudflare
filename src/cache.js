@@ -25,6 +25,9 @@ export const CACHE_TTL = {
 // KV 缓存键前缀（用于主动失效）
 export const KV_CACHE_PREFIX = 'cache:'
 
+// Origin 来自 CORS 中间件；Authorization 防止浏览器/中间代理跨登录态复用响应
+const VARY = 'Origin, Authorization'
+
 // ========== Cache API 缓存中间件 ==========
 // 使用 Cloudflare Cache API (caches.default) 缓存 GET 请求响应
 // 缓存键 = 完整请求 URL（含 query string）
@@ -42,6 +45,16 @@ export function withCache(ttl, handler) {
       return handler(c)
     }
 
+    // 携带 Authorization 的响应可能是个性化内容（如首页按兴趣加权排序），
+    // 而 Cache API 只按 URL 建 key，缓存后会跨用户串号，故整体绕过
+    if (c.req.header('Authorization')) {
+      const personalized = await handler(c)
+      personalized.headers.set('Cache-Control', 'private, no-store')
+      personalized.headers.set('Vary', VARY)
+      personalized.headers.set('X-Cache', 'BYPASS')
+      return personalized
+    }
+
     const cache = caches.default
     const cacheKey = new Request(c.req.url, c.req.raw)
 
@@ -52,6 +65,7 @@ export function withCache(ttl, handler) {
         // 添加 X-Cache 头方便调试
         const headers = new Headers(cachedResponse.headers)
         headers.set('X-Cache', 'HIT')
+        headers.set('Vary', VARY)
         return new Response(cachedResponse.body, {
           status: cachedResponse.status,
           headers
@@ -85,6 +99,7 @@ export function withCache(ttl, handler) {
 
     // 添加 Cache-Control 头（即使没进 Cache API，也告诉浏览器/CDN）
     response.headers.set('Cache-Control', `public, max-age=${ttl}, s-maxage=${ttl}`)
+    response.headers.set('Vary', VARY)
     response.headers.set('X-Cache', 'MISS')
     return response
   }
