@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { generateCode, sendVerificationCode } from '../email.js'
 import { withCache, CACHE_TTL } from '../cache.js'
+import { getUser, issueToken } from '../session.js'
 
 const auth = new Hono()
 
@@ -66,35 +67,6 @@ function validatePassword(password) {
     if (!/[A-Z]/.test(password)) return '密码需包含大写字母'
     if (!/[0-9]/.test(password)) return '密码需包含数字'
     return null
-}
-
-async function getUser(c) {
-    const token = c.req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return null;
-    const userStr = await c.env.suyuankv.get(token);
-    if (!userStr) return null;
-    const user = JSON.parse(userStr);
-
-    // 令牌版本校验：修改密码/改邮箱等敏感操作后旧令牌失效
-    const db = getDb(c);
-    const currentVersion = await db.getTokenVersion(user.id);
-    if (typeof user.tokenVersion === 'number' && user.tokenVersion !== currentVersion) {
-        return null;
-    }
-    return user;
-}
-
-// 签发令牌：写入当前 token_version，使旧令牌在版本变更后失效
-async function issueToken(c, user) {
-    const db = getDb(c);
-    const tokenVersion = await db.getTokenVersion(user.id);
-    const token = crypto.randomUUID();
-    const userData = {
-        id: user.id, username: user.username, email: user.email,
-        phone: user.phone, role: user.role, tokenVersion
-    };
-    await c.env.suyuankv.put(token, JSON.stringify(userData), { expirationTtl: 86400 });
-    return { token, userData };
 }
 
 // 校验验证码并防暴破（失败 5 次作废）。namespace 区分注册/登录，避免互相覆盖

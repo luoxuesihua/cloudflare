@@ -3,6 +3,7 @@ import { Database } from '../db.js'
 import { collectNews, collectHotSearch } from '../services/collector.js'
 import { generateAISummary, extractKeyPoints } from '../services/summarizer.js'
 import { withCache, CACHE_TTL, invalidateCacheAPI } from '../cache.js'
+import { getUser } from '../session.js'
 
 // 缓存失效辅助：写操作后使文章相关无参缓存失效
 // 说明：带查询参数的列表/详情 URL 无法枚举，依赖 withCache 设置的较短 TTL 自然过期；
@@ -15,13 +16,6 @@ const posts = new Hono()
 
 function getDb(c) {
     return new Database(c.env)
-}
-
-async function getUser(c) {
-    const token = c.req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return null;
-    const userStr = await c.env.suyuankv.get(token);
-    return userStr ? JSON.parse(userStr) : null;
 }
 
 // ========== 安全性：SQL 参数白名单（防止注入）==========

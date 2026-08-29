@@ -2,18 +2,12 @@ import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { collectSingleSource, collectAllDynamicSources, ALL_FEEDS } from '../services/collector.js'
 import { withCache, CACHE_TTL, invalidateCacheAPI } from '../cache.js'
+import { getUser } from '../session.js'
 
 const sources = new Hono()
 
 function getDb(c) {
     return new Database(c.env)
-}
-
-async function getUser(c) {
-    const token = c.req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return null;
-    const userStr = await c.env.suyuankv.get(token);
-    return userStr ? JSON.parse(userStr) : null;
 }
 
 // ========== 获取所有源（首次自动种子化预设源） ==========
