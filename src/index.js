@@ -7,6 +7,7 @@ import { Hono } from 'hono'
 import auth from './routes/auth.js'
 import posts from './routes/posts.js'
 import sources from './routes/sources.js'
+import agent from './routes/agent.js'
 import { Database } from './db.js'
 import { collectNews, collectHotSearch } from './services/collector.js'
 import { asyncAISummarize } from './services/summarizer.js'
@@ -82,6 +83,7 @@ function isStaticAssetPath(pathname) {
         || pathname === '/robots.txt'
         || pathname === '/security.txt'
         || pathname === '/favicon.svg'
+        || pathname === '/llms.txt'
         || /\.[a-z0-9]{1,8}$/i.test(pathname)
 }
 
@@ -211,6 +213,19 @@ app.use('/api/*', async (c, next) => {
 app.route('/api/auth', auth)
 app.route('/api/posts', posts)
 app.route('/api/sources', sources)
+app.route('/api/v1/agent', agent)
+
+// LLM 发现标准出口
+app.get('/llms.txt', async (c) => {
+  const assetRes = await c.env.ASSETS.fetch(c.req.raw)
+  if (assetRes.status === 200) {
+    const res = new Response(assetRes.body, assetRes)
+    res.headers.set('Content-Type', 'text/plain; charset=utf-8')
+    res.headers.set('Cache-Control', 'public, max-age=3600')
+    return res
+  }
+  return c.text(`# 万象资讯 (Suyuan News)\n\n> 专为 AI Agent 设计的行业情报出口: https://m.suyuank.top/api/v1/agent\n`)
+})
 
 // 所有非 API 请求交给前端静态资源处理 (Vue SPA)
 app.all('*', async (c) => {

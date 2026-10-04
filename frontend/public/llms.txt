@@ -1,0 +1,22 @@
+# 万象资讯 (Suyuan News)
+
+> 现代资讯聚合与行业情报分析平台：实时聚合 40+ 优质信源与全网热搜，结合 Workers AI 生成自包含标题、答案先行摘要与核心看点提炼。
+
+## Agent 端点 (Markdown / 纯净上下文格式)
+
+- [最新精选资讯流](https://m.suyuank.top/api/v1/agent): 专为大语言模型与 AI 智能体设计的纯 Markdown 格式资讯流，无 HTML 噪音，极省上下文 Token。
+- [AI 前沿精选](https://m.suyuank.top/api/v1/agent?category=ai): 聚焦大模型、开源智能体框架与 AI 产品动态。
+- [编程开发精选](https://m.suyuank.top/api/v1/agent?category=dev): 聚焦开发者生态、技术架构与开源趋势。
+- [商业财经精选](https://m.suyuank.top/api/v1/agent?category=biz): 聚焦科技投融资、产业动态与商业热点。
+- [产品设计精选](https://m.suyuank.top/api/v1/agent?category=product): 聚焦数字生活、产品思维与设计指南。
+- [运维架构精选](https://m.suyuank.top/api/v1/agent?category=ops): 聚焦云原生、Kubernetes 与高可用架构。
+
+## 结构化 API (JSON)
+
+- [文章列表接口](https://m.suyuank.top/api/posts): 支持 category, tag, keyword, sort 等多维参数。
+- [热点统计接口](https://m.suyuank.top/api/posts/stats): 包含各分类及信源统计。
+
+## 核心设计规范 (借鉴 AIHOT)
+1. 答案先行 (Answer-First)：每条摘要首句直接陈述核心结论与动作。
+2. 标题自洽 (Self-Contained)：补齐主体，不依赖上下文即可理解。
+3. 核心看点 (Takeaway)：一句话提炼对行业或读者的实际价值。
