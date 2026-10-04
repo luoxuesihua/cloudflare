@@ -126,6 +126,14 @@ const sources = computed(() => {
   return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 })
 
+// 杂志化排版模式判断（仅在首页无过滤、无搜索的默认视图生效，且至少有 4 条数据）
+const isMagazineMode = computed(() => {
+  return !currentCategory.value && !currentSource.value && !currentTag.value && !searchKeyword.value.trim() && sortMode.value === 'created_at' && posts.value.length >= 4
+})
+const leadPost = computed(() => isMagazineMode.value ? posts.value[0] : null)
+const briefPosts = computed(() => isMagazineMode.value ? posts.value.slice(1, 4) : [])
+const regularPosts = computed(() => isMagazineMode.value ? posts.value.slice(4) : posts.value)
+
 // ===== 数据获取 =====
 // AbortController 防止快速切换筛选时的竞态条件
 let abortController = null
@@ -525,55 +533,134 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
       <p>暂无内容，换个分类试试？</p>
     </div>
 
-    <!-- 文章卡片网格 (仿 NewsNow 布局) -->
-    <div v-else class="news-grid">
-      <article
-        v-for="post in posts" :key="post.id"
-        class="news-card"
-        :class="{ 'is-hot': (post.hot_score || 50) >= 75 }"
-      >
-        <!-- 顶部色条 -->
-        <div class="card-topbar" :style="{ background: (getSourceStyle(post.username).color || '#0EA5E9') }"></div>
-
-        <!-- 内容区 -->
-        <div class="card-body">
-          <div class="card-meta">
-            <span class="source-tag" :style="{ color: getSourceStyle(post.username).color, background: getSourceStyle(post.username).color + '15' }">
-              {{ extractSource(post.username) || post.username }}
-            </span>
-            <div class="card-meta-right">
-              <span v-if="getHotLevel(post.hot_score)" class="hot-badge-inline" :class="getHotLevel(post.hot_score)?.cls">
-                {{ getHotLevel(post.hot_score)?.label }}
+    <!-- 杂志化模式与普通流 -->
+    <div v-else class="content-container">
+      <!-- 杂志化重点编排区 (仿 hotai.news 杂志头条 + 编号速递) -->
+      <section v-if="isMagazineMode && leadPost" class="magazine-hero">
+        <div class="magazine-lead">
+          <div class="lead-badge-row">
+            <span class="lead-tag"><span class="lead-pulse"></span>01 / 今日头条焦点</span>
+            <span v-if="leadPost.hot_score" class="lead-hot">🔥 {{ leadPost.hot_score }} 热度</span>
+          </div>
+          <h2 class="lead-title">
+            <RouterLink :to="'/post/' + leadPost.id">{{ leadPost.title }}</RouterLink>
+          </h2>
+          <div v-if="leadPost.takeaway" class="lead-takeaway">
+            <span class="takeaway-label">🎯 核心看点</span>
+            <span class="takeaway-val">{{ leadPost.takeaway }}</span>
+          </div>
+          <p class="lead-summary">
+            {{ getExcerpt(leadPost) }}
+          </p>
+          <div class="lead-footer">
+            <div class="lead-source-wrap">
+              <span class="lead-source" :style="{ color: getSourceStyle(leadPost.username).color }">
+                {{ extractSource(leadPost.username) || leadPost.username }}
               </span>
-              <span class="card-time">{{ timeAgo(post.created_at) }}</span>
+              <span class="lead-dot">·</span>
+              <span class="lead-time">{{ timeAgo(leadPost.created_at) }}</span>
+            </div>
+            <RouterLink :to="'/post/' + leadPost.id" class="lead-action">
+              深度导读 <span class="arrow">↗</span>
+            </RouterLink>
+          </div>
+        </div>
+
+        <div class="magazine-briefs">
+          <div class="briefs-heading">
+            <div class="briefs-title">
+              <span class="briefs-kicker">02-04 / 精选速递</span>
+              <h3>最新要闻速递</h3>
+            </div>
+            <span class="briefs-hint">点按阅读 ↗</span>
+          </div>
+          <div class="briefs-rows">
+            <article v-for="(brief, idx) in briefPosts" :key="brief.id" class="brief-row">
+              <span class="brief-index">0{{ idx + 2 }}</span>
+              <div class="brief-main">
+                <div class="brief-meta">
+                  <span class="brief-source" :style="{ color: getSourceStyle(brief.username).color }">
+                    {{ extractSource(brief.username) || brief.username }}
+                  </span>
+                  <span class="brief-time">{{ timeAgo(brief.created_at) }}</span>
+                </div>
+                <h4 class="brief-title">
+                  <RouterLink :to="'/post/' + brief.id">{{ brief.title }}</RouterLink>
+                </h4>
+                <p v-if="brief.takeaway || brief.ai_summary || brief.summary" class="brief-summary">
+                  {{ brief.takeaway || getExcerpt(brief) }}
+                </p>
+              </div>
+              <RouterLink :to="'/post/' + brief.id" class="brief-arrow" aria-label="查看">↗</RouterLink>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- 栏目流分隔带 -->
+      <div v-if="posts.length > 0" class="section-divider-bar">
+        <div class="divider-left">
+          <span class="divider-kicker">{{ isMagazineMode ? '05 / 实时资讯流' : '全部资讯收录' }}</span>
+          <span class="divider-count">共 {{ totalCount }} 条实时内容</span>
+        </div>
+        <span class="divider-right">40+ 源聚合采集</span>
+      </div>
+
+      <!-- 文章卡片网格 -->
+      <div class="news-grid">
+        <article
+          v-for="post in regularPosts" :key="post.id"
+          class="news-card"
+          :class="{ 'is-hot': (post.hot_score || 50) >= 75 }"
+        >
+          <!-- 顶部色条 -->
+          <div class="card-topbar" :style="{ background: (getSourceStyle(post.username).color || '#0EA5E9') }"></div>
+
+          <!-- 内容区 -->
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="source-tag" :style="{ color: getSourceStyle(post.username).color, background: getSourceStyle(post.username).color + '15' }">
+                {{ extractSource(post.username) || post.username }}
+              </span>
+              <div class="card-meta-right">
+                <span v-if="getHotLevel(post.hot_score)" class="hot-badge-inline" :class="getHotLevel(post.hot_score)?.cls">
+                  {{ getHotLevel(post.hot_score)?.label }}
+                </span>
+                <span class="card-time">{{ timeAgo(post.created_at) }}</span>
+              </div>
+            </div>
+
+            <h2 class="card-title">
+              <RouterLink :to="'/post/' + post.id">{{ post.title }}</RouterLink>
+            </h2>
+
+            <div v-if="post.takeaway" class="card-takeaway-chip">
+              <span class="chip-icon">🎯</span>
+              <span class="chip-text">{{ post.takeaway }}</span>
+            </div>
+
+            <p v-if="post.snippet || post.summary || post.ai_summary" class="card-excerpt">
+              <span v-if="post.ai_summary" class="ai-badge" title="AI 智能摘要">🤖</span>
+              {{ getExcerpt(post) }}
+            </p>
+          </div>
+
+          <!-- 底部标签 -->
+          <div class="card-footer">
+            <div class="card-tags" v-if="post.tags">
+              <span
+                v-for="tag in post.tags.split(',').filter(t => t.trim() && t.trim() !== post.category)"
+                :key="tag"
+                class="mini-tag"
+                @click="filterByTag(tag.trim())"
+              >#{{ tag.trim() }}</span>
+            </div>
+            <div class="hot-meter" v-if="post.hot_score >= 50">
+              <span class="hot-bar" :style="{ width: post.hot_score + '%' }"></span>
             </div>
           </div>
-
-          <h2 class="card-title">
-            <RouterLink :to="'/post/' + post.id">{{ post.title }}</RouterLink>
-          </h2>
-
-          <p v-if="post.snippet || post.summary || post.ai_summary" class="card-excerpt">
-            <span v-if="post.ai_summary" class="ai-badge" title="AI 智能摘要">🤖</span>
-            {{ getExcerpt(post) }}
-          </p>
-        </div>
-
-        <!-- 底部标签 -->
-        <div class="card-footer">
-          <div class="card-tags" v-if="post.tags">
-            <span
-              v-for="tag in post.tags.split(',').filter(t => t.trim() && t.trim() !== post.category)"
-              :key="tag"
-              class="mini-tag"
-              @click="filterByTag(tag.trim())"
-            >#{{ tag.trim() }}</span>
-          </div>
-          <div class="hot-meter" v-if="post.hot_score >= 50">
-            <span class="hot-bar" :style="{ width: post.hot_score + '%' }"></span>
-          </div>
-        </div>
-      </article>
+        </article>
+      </div>
     </div>
 
     <!-- 加载更多触发点（Intersection Observer） -->
@@ -942,6 +1029,318 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
   color: var(--text-muted);
   font-size: 0.82rem;
   padding: 10px 0;
+}
+
+/* ===== 杂志化头条与编号速递 (仿 hotai.news) ===== */
+.magazine-hero {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.magazine-lead {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s, border-color 0.2s;
+}
+.magazine-lead:hover {
+  border-color: rgba(14, 165, 233, 0.4);
+  transform: translateY(-2px);
+}
+.lead-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.lead-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #38BDF8;
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.lead-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38BDF8;
+  box-shadow: 0 0 8px #38BDF8;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(56, 189, 248, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+}
+.lead-hot {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #FB923C;
+}
+.lead-title {
+  font-size: 1.4rem;
+  line-height: 1.4;
+  margin: 0 0 12px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.lead-title a {
+  color: #F8FAFC;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.lead-title a:hover {
+  color: #38BDF8;
+}
+.lead-takeaway {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.12);
+  border-left: 3px solid #10B981;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+}
+.takeaway-label {
+  font-weight: 700;
+  color: #10B981;
+  white-space: nowrap;
+}
+.takeaway-val {
+  color: #E2E8F0;
+  line-height: 1.5;
+}
+.lead-summary {
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: #94A3B8;
+  margin: 0 0 18px;
+  flex: 1;
+}
+.lead-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lead-source-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+}
+.lead-source {
+  font-weight: 600;
+}
+.lead-dot {
+  color: rgba(255, 255, 255, 0.3);
+}
+.lead-time {
+  color: var(--text-muted);
+}
+.lead-action {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #38BDF8;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: transform 0.2s;
+}
+.lead-action:hover {
+  text-decoration: underline;
+  transform: translateX(2px);
+}
+
+/* 侧边编号速递 */
+.magazine-briefs {
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 20px;
+}
+.briefs-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.briefs-kicker {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #A78BFA;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+}
+.briefs-title h3 {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #F1F5F9;
+}
+.briefs-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.briefs-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+.brief-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.2s, border-color 0.2s;
+  text-decoration: none;
+}
+.brief-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.brief-index {
+  font-family: monospace;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #64748B;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.brief-main {
+  flex: 1;
+  min-width: 0;
+}
+.brief-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+.brief-source {
+  font-weight: 600;
+}
+.brief-time {
+  color: var(--text-muted);
+}
+.brief-title {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  font-weight: 700;
+}
+.brief-title a {
+  color: #E2E8F0;
+  text-decoration: none;
+}
+.brief-title a:hover {
+  color: #38BDF8;
+}
+.brief-summary {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #94A3B8;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.brief-arrow {
+  font-size: 0.95rem;
+  color: #64748B;
+  text-decoration: none;
+  align-self: center;
+  padding: 4px;
+  transition: transform 0.2s, color 0.2s;
+}
+.brief-row:hover .brief-arrow {
+  color: #38BDF8;
+  transform: translate(2px, -2px);
+}
+
+/* 分隔带 */
+.section-divider-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0 20px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  border-left: 3px solid #0EA5E9;
+}
+.divider-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.divider-kicker {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #F8FAFC;
+  letter-spacing: 0.02em;
+}
+.divider-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.divider-right {
+  font-size: 0.75rem;
+  color: #64748B;
+}
+
+/* 卡片上的看点微标 */
+.card-takeaway-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.1);
+  border-left: 2px solid #10B981;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin: 6px 0 8px;
+  font-size: 0.78rem;
+  color: #D1D5DB;
+  line-height: 1.4;
+}
+.chip-icon {
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== 响应式 ===== */
