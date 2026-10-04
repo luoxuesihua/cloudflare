@@ -96,7 +96,10 @@ export class Database {
             "ALTER TABLE comments ADD COLUMN user_id INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN interests TEXT DEFAULT '[]'",
             "ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'dark'",
-            "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1"
+            "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1",
+            "ALTER TABLE notes ADD COLUMN takeaway TEXT DEFAULT ''",
+            "ALTER TABLE notes ADD COLUMN target_audience TEXT DEFAULT ''",
+            "ALTER TABLE notes ADD COLUMN attention_score INTEGER DEFAULT 50"
         ];
         for (const sql of alterCols) {
             try { await this.db.prepare(sql).run(); } catch (e) { /* 列已存在 */ }
@@ -179,7 +182,7 @@ export class Database {
         keyword = keyword ? keyword.trim() : null
 
         // 构建带搜索条件的 SQL 查询
-        let sql = "SELECT id, title, username, tags, category, hot_score, source_name, summary, ai_summary, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes WHERE 1=1"
+        let sql = "SELECT id, title, username, tags, category, hot_score, source_name, summary, ai_summary, takeaway, target_audience, attention_score, created_at, SUBSTR(content, 1, 200) AS snippet FROM notes WHERE 1=1"
         const bindings = []
 
         if (keyword) {
@@ -267,6 +270,18 @@ export class Database {
         return await this.db.prepare(
             "UPDATE notes SET ai_summary = ? WHERE id = ?"
         ).bind(aiSummary, id).run();
+    }
+
+    async updatePostAIInsights(id, { aiSummary = '', takeaway = '', targetAudience = '', attentionScore = 50, improvedTitle = null } = {}) {
+        let sql = "UPDATE notes SET ai_summary = ?, takeaway = ?, target_audience = ?, attention_score = ?"
+        const params = [aiSummary, takeaway, targetAudience, attentionScore]
+        if (improvedTitle && typeof improvedTitle === 'string' && improvedTitle.trim().length > 3) {
+            sql += ", title = CASE WHEN LENGTH(title) < 14 OR title LIKE 'v%.%' OR title LIKE 'V%.%' THEN ? ELSE title END"
+            params.push(improvedTitle.trim())
+        }
+        sql += " WHERE id = ?"
+        params.push(id)
+        return await this.db.prepare(sql).bind(...params).run();
     }
 
     async deletePost(id) {

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { Database } from '../db.js'
 import { collectNews, collectHotSearch } from '../services/collector.js'
-import { generateAISummary, extractKeyPoints } from '../services/summarizer.js'
+import { generateAISummary, extractKeyPoints, generateAIInsights } from '../services/summarizer.js'
 import { withCache, CACHE_TTL, invalidateCacheAPI } from '../cache.js'
 import { getUser } from '../session.js'
 
@@ -195,7 +195,7 @@ posts.post('/collect-hot', async (c) => {
     return c.json({ success: true, message: '热搜采集任务已启动，将在后台执行' })
 })
 
-// 为指定文章生成 AI 摘要 + 要点（仅限管理员）
+// 为指定文章生成 AI 摘要 + 核心看点 + 要点（仅限管理员）
 posts.post('/:id/summarize', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
@@ -205,18 +205,27 @@ posts.post('/:id/summarize', async (c) => {
     const post = await db.findPostById(id)
     if (!post) return c.json({ error: '文章不存在' }, 404)
 
-    const [summary, keyPoints] = await Promise.all([
-        generateAISummary(c.env, post.title, post.content),
+    const [insights, keyPoints] = await Promise.all([
+        generateAIInsights(c.env, post.title, post.content, post.source_name),
         extractKeyPoints(c.env, post.title, post.content)
     ])
 
-    if (summary) {
-        await db.updatePostAISummary(id, summary)
+    if (insights) {
+        await db.updatePostAIInsights(id, {
+            aiSummary: insights.summary,
+            takeaway: insights.takeaway,
+            targetAudience: insights.targetAudience,
+            attentionScore: insights.attentionScore,
+            improvedTitle: insights.improvedTitle
+        })
     }
 
     return c.json({
         success: true,
-        ai_summary: summary,
+        ai_summary: insights?.summary || '',
+        takeaway: insights?.takeaway || '',
+        target_audience: insights?.targetAudience || '',
+        attention_score: insights?.attentionScore || 50,
         key_points: keyPoints
     })
 })

@@ -110,6 +110,15 @@ async function fetchAISummary(force = false) {
       if (data.ai_summary) {
         post.value.ai_summary = data.ai_summary
       }
+      if (data.takeaway) {
+        post.value.takeaway = data.takeaway
+      }
+      if (data.target_audience) {
+        post.value.target_audience = data.target_audience
+      }
+      if (data.attention_score) {
+        post.value.attention_score = data.attention_score
+      }
       if (data.key_points) {
         aiKeyPoints.value = data.key_points
       }
@@ -211,6 +220,18 @@ function commentTimeAgo(dateStr) {
           <button v-if="isAdmin" class="ai-action-btn" @click="fetchAISummary(true)" :disabled="isLoadingAI" title="管理员专属：调用 Workers AI 生成/刷新摘要">
             {{ isLoadingAI ? '提炼中…' : (post.ai_summary ? '重新提炼' : '生成 AI 摘要') }}
           </button>
+        </div>
+
+        <!-- AI 核心看点与人群标签 -->
+        <div v-if="post.takeaway || post.target_audience" class="ai-insight-meta">
+          <div v-if="post.takeaway" class="ai-insight-chip takeaway-chip">
+            <span class="chip-label">🎯 核心看点</span>
+            <span class="chip-val">{{ post.takeaway }}</span>
+          </div>
+          <div v-if="post.target_audience" class="ai-insight-chip audience-chip">
+            <span class="chip-label">👥 适合读者</span>
+            <span class="chip-val">{{ post.target_audience }}</span>
+          </div>
         </div>
 
         <!-- AI / 规则摘要 -->
@@ -388,6 +409,46 @@ function commentTimeAgo(dateStr) {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-left: 4px;
+}
+.ai-insight-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ai-insight-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.takeaway-chip {
+  background: rgba(16, 185, 129, 0.12);
+  border-left: 3px solid #10B981;
+}
+.takeaway-chip .chip-label {
+  font-weight: 700;
+  color: #10B981;
+  white-space: nowrap;
+}
+.takeaway-chip .chip-val {
+  color: #E2E8F0;
+  font-weight: 500;
+}
+.audience-chip {
+  background: rgba(14, 165, 233, 0.12);
+  border-left: 3px solid #0EA5E9;
+}
+.audience-chip .chip-label {
+  font-weight: 700;
+  color: #0EA5E9;
+  white-space: nowrap;
+}
+.audience-chip .chip-val {
+  color: #CBD5E1;
 }
 .ai-summary-text {
   font-size: 0.92rem;

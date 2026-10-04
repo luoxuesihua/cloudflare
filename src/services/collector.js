@@ -662,7 +662,7 @@ export async function collectSingleSource(env, feed, options = {}) {
         const category = detectCategory(title, markdownDesc, feed.category);
 
         const newId = await db.createPost(0, `NewsBot (${feed.name})`, title, content, category, feed.hotScore || 60, category, feed.name, summary);
-        if (onNewPost && newId) onNewPost(newId, title, content);
+        if (onNewPost && newId) onNewPost(newId, title, content, feed.name);
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 14 * 24 * 60 * 60 });
 
         collected++;
@@ -809,7 +809,7 @@ export async function collectHotSearch(env, onNewPost) {
         const tags = `热搜,${category}`;
         const newId = await db.createPost(0, `热搜Bot (${source.name})`, item.title, hotContent, tags, hotScore, category, source.name, summary);
         if (onNewPost && newId) {
-          onNewPost(newId, item.title, hotContent);
+          onNewPost(newId, item.title, hotContent, source.name);
         }
         await env.suyuankv.put(kvKey, 'true', { expirationTtl: 2 * 60 * 60 });
         totalImported++;

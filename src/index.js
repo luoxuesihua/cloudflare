@@ -259,10 +259,10 @@ export default {
     // 热搜采集：每 1 小时 (0 * * * *) 或每 30 分钟 (*/30 * * * *)
     const cron = event.cron || ''
 
-    // AI 摘要回调：采集到新文章后异步生成 AI 摘要
-    const onNewPost = (postId, title, content) => {
+    // AI 摘要回调：采集到新文章后异步生成 AI 深度导读
+    const onNewPost = (postId, title, content, sourceName) => {
       if (env.AI) {
-        ctx.waitUntil(asyncAISummarize(env, postId, title, content))
+        ctx.waitUntil(asyncAISummarize(env, postId, title, content, sourceName))
       }
     }
 
