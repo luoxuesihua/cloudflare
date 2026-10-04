@@ -4,10 +4,12 @@ import { useRoute } from 'vue-router'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { useAuth } from '../composables/useAuth'
+import { useBookmarks } from '../composables/useBookmarks'
 import { dedupedFetch } from '../utils/api'
 
 const route = useRoute()
 const auth = useAuth()
+const { isBookmarked, toggleBookmark } = useBookmarks()
 const post = ref(null)
 const isLoading = ref(true)
 const error = ref('')
@@ -201,6 +203,14 @@ function commentTimeAgo(dateStr) {
         <div class="meta">
           <span>{{ new Date(post.created_at).toLocaleString('zh-CN') }}</span>
           <span>@{{ post.username }}</span>
+          <button
+            class="detail-bookmark-btn"
+            :class="{ 'is-saved': isBookmarked(post.id) }"
+            @click="toggleBookmark(post)"
+            :title="isBookmarked(post.id) ? '取消收藏' : '离线收藏此文章'"
+          >
+            {{ isBookmarked(post.id) ? '⭐ 已收藏' : '☆ 收藏' }}
+          </button>
         </div>
         <div class="tags" v-if="post.tags">
           <span v-for="tag in post.tags.split(',').filter(t => t.trim())" :key="tag" class="tag">#{{ tag.trim() }}</span>
@@ -338,6 +348,32 @@ function commentTimeAgo(dateStr) {
   gap: 20px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+}
+
+.detail-bookmark-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: auto;
+}
+.detail-bookmark-btn:hover {
+  background: rgba(245, 158, 11, 0.12);
+  color: #FBBF24;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+.detail-bookmark-btn.is-saved {
+  background: rgba(245, 158, 11, 0.15);
+  color: #FBBF24;
+  border-color: #F59E0B;
 }
 
 .tags { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -3,8 +3,11 @@ import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { dedupedFetch, fetchWithSWR, getSessionCache, setSessionCache } from '../utils/api'
 import { useAuth } from '../composables/useAuth'
+import { useBookmarks } from '../composables/useBookmarks'
 
 const { getHeaders } = useAuth()
+const { bookmarks, bookmarkCount, isBookmarked, toggleBookmark } = useBookmarks()
+const showBookmarksOnly = ref(false)
 
 const posts = ref([])
 const isLoading = ref(true)       // 首次无缓存时为 true，有缓存数据后不再显示 loading
@@ -126,13 +129,16 @@ const sources = computed(() => {
   return [...set].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 })
 
-// 杂志化排版模式判断（仅在首页无过滤、无搜索的默认视图生效，且至少有 4 条数据）
+// 杂志化排版模式判断（仅在首页无过滤、无搜索、未开启收藏的默认视图生效，且至少有 4 条数据）
 const isMagazineMode = computed(() => {
-  return !currentCategory.value && !currentSource.value && !currentTag.value && !searchKeyword.value.trim() && sortMode.value === 'created_at' && posts.value.length >= 4
+  return !showBookmarksOnly.value && !currentCategory.value && !currentSource.value && !currentTag.value && !searchKeyword.value.trim() && sortMode.value === 'created_at' && posts.value.length >= 4
 })
 const leadPost = computed(() => isMagazineMode.value ? posts.value[0] : null)
 const briefPosts = computed(() => isMagazineMode.value ? posts.value.slice(1, 4) : [])
-const regularPosts = computed(() => isMagazineMode.value ? posts.value.slice(4) : posts.value)
+const regularPosts = computed(() => {
+  if (showBookmarksOnly.value) return bookmarks.value
+  return isMagazineMode.value ? posts.value.slice(4) : posts.value
+})
 
 // ===== 数据获取 =====
 // AbortController 防止快速切换筛选时的竞态条件
@@ -300,6 +306,7 @@ function filterByTag(tag) {
 }
 
 function clearAllFilters() {
+  showBookmarksOnly.value = false
   currentCategory.value = ''
   currentSource.value = ''
   currentTag.value = ''
@@ -448,7 +455,11 @@ function timeAgo(dateStr) {
 }
 
 function hasFilter() {
-  return currentCategory.value || currentSource.value || currentTag.value || searchKeyword.value.trim()
+  return showBookmarksOnly.value || currentCategory.value || currentSource.value || currentTag.value || searchKeyword.value.trim()
+}
+
+function toggleBookmarkView() {
+  showBookmarksOnly.value = !showBookmarksOnly.value
 }
 
 watch([currentCategory, currentSource, currentTag, sortMode], () => {
@@ -512,6 +523,15 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
         </select>
         </div>
 
+        <button
+          class="bookmark-filter-btn"
+          :class="{ active: showBookmarksOnly }"
+          @click="toggleBookmarkView"
+          :title="showBookmarksOnly ? '返回所有资讯' : '查看我收藏的文章'"
+        >
+          ⭐ 收藏 <span v-if="bookmarkCount > 0" class="badge-count">{{ bookmarkCount }}</span>
+        </button>
+
         <button v-if="hasFilter()" class="clear-btn" @click="clearAllFilters">✕ 清空筛选</button>
       </div>
     </div>
@@ -519,6 +539,9 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
     <!-- 当前筛选状态 -->
     <div v-if="currentTag" class="filter-banner glass">
       <span>🏷️ 标签：<strong>#{{ currentTag }}</strong></span>
+    </div>
+    <div v-else-if="showBookmarksOnly" class="filter-banner glass">
+      <span>⭐ <strong>离线收藏列表</strong> (共 {{ bookmarkCount }} 条已保存资讯)</span>
     </div>
 
     <!-- 加载中 -->
@@ -528,9 +551,10 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
     </div>
 
     <!-- 空状态 -->
-    <div v-else-if="posts.length === 0" class="empty-state">
-      <div class="empty-icon">📭</div>
-      <p>暂无内容，换个分类试试？</p>
+    <div v-else-if="(posts.length === 0 && !showBookmarksOnly) || (showBookmarksOnly && bookmarks.length === 0)" class="empty-state">
+      <div class="empty-icon">{{ showBookmarksOnly ? '⭐' : '📭' }}</div>
+      <p v-if="showBookmarksOnly">您还没有收藏任何资讯，浏览时点击任意文章卡片的 ⭐ 即可离线保存！</p>
+      <p v-else>暂无内容，换个分类试试？</p>
     </div>
 
     <!-- 杂志化模式与普通流 -->
@@ -540,7 +564,17 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
         <div class="magazine-lead">
           <div class="lead-badge-row">
             <span class="lead-tag"><span class="lead-pulse"></span>01 / 今日头条焦点</span>
-            <span v-if="leadPost.hot_score" class="lead-hot">🔥 {{ leadPost.hot_score }} 热度</span>
+            <div class="lead-badge-right">
+              <span v-if="leadPost.hot_score" class="lead-hot">🔥 {{ leadPost.hot_score }} 热度</span>
+              <button
+                class="card-bookmark-btn"
+                :class="{ 'is-saved': isBookmarked(leadPost.id) }"
+                @click.stop.prevent="toggleBookmark(leadPost)"
+                :title="isBookmarked(leadPost.id) ? '取消收藏' : '离线收藏此条'"
+              >
+                {{ isBookmarked(leadPost.id) ? '★' : '☆' }}
+              </button>
+            </div>
           </div>
           <h2 class="lead-title">
             <RouterLink :to="'/post/' + leadPost.id">{{ leadPost.title }}</RouterLink>
@@ -591,19 +625,29 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
                   {{ brief.takeaway || getExcerpt(brief) }}
                 </p>
               </div>
-              <RouterLink :to="'/post/' + brief.id" class="brief-arrow" aria-label="查看">↗</RouterLink>
+              <div class="brief-actions">
+                <button
+                  class="brief-bookmark-btn"
+                  :class="{ 'is-saved': isBookmarked(brief.id) }"
+                  @click.stop.prevent="toggleBookmark(brief)"
+                  :title="isBookmarked(brief.id) ? '取消收藏' : '离线收藏此条'"
+                >
+                  {{ isBookmarked(brief.id) ? '★' : '☆' }}
+                </button>
+                <RouterLink :to="'/post/' + brief.id" class="brief-arrow" aria-label="查看">↗</RouterLink>
+              </div>
             </article>
           </div>
         </div>
       </section>
 
       <!-- 栏目流分隔带 -->
-      <div v-if="posts.length > 0" class="section-divider-bar">
+      <div v-if="posts.length > 0 || (showBookmarksOnly && bookmarks.length > 0)" class="section-divider-bar">
         <div class="divider-left">
-          <span class="divider-kicker">{{ isMagazineMode ? '05 / 实时资讯流' : '全部资讯收录' }}</span>
-          <span class="divider-count">共 {{ totalCount }} 条实时内容</span>
+          <span class="divider-kicker">{{ showBookmarksOnly ? '⭐ / 离线收藏' : (isMagazineMode ? '05 / 实时资讯流' : '全部资讯收录') }}</span>
+          <span class="divider-count">共 {{ showBookmarksOnly ? bookmarks.length : totalCount }} 条</span>
         </div>
-        <span class="divider-right">40+ 源聚合采集</span>
+        <span class="divider-right">{{ showBookmarksOnly ? '离线存储于当前浏览器' : '40+ 源聚合采集' }}</span>
       </div>
 
       <!-- 文章卡片网格 -->
@@ -627,6 +671,14 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
                   {{ getHotLevel(post.hot_score)?.label }}
                 </span>
                 <span class="card-time">{{ timeAgo(post.created_at) }}</span>
+                <button
+                  class="card-bookmark-btn"
+                  :class="{ 'is-saved': isBookmarked(post.id) }"
+                  @click.stop.prevent="toggleBookmark(post)"
+                  :title="isBookmarked(post.id) ? '取消收藏' : '离线收藏此条'"
+                >
+                  {{ isBookmarked(post.id) ? '★' : '☆' }}
+                </button>
               </div>
             </div>
 
@@ -1341,6 +1393,86 @@ watch([currentCategory, currentSource, currentTag, sortMode], () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ===== 离线收藏按钮与徽标 ===== */
+.bookmark-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.bookmark-filter-btn:hover {
+  background: rgba(245, 158, 11, 0.1);
+  color: #FBBF24;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+.bookmark-filter-btn.active {
+  background: rgba(245, 158, 11, 0.15);
+  color: #FBBF24;
+  border-color: #F59E0B;
+}
+.badge-count {
+  font-size: 0.7rem;
+  background: rgba(245, 158, 11, 0.2);
+  color: #FBBF24;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+.card-bookmark-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.95rem;
+  color: #64748B;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+.card-bookmark-btn:hover {
+  color: #FBBF24;
+  transform: scale(1.15);
+}
+.card-bookmark-btn.is-saved {
+  color: #FBBF24;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+.brief-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: center;
+}
+.brief-bookmark-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.95rem;
+  color: #64748B;
+  cursor: pointer;
+  padding: 2px 4px;
+  transition: all 0.2s;
+}
+.brief-bookmark-btn:hover {
+  color: #FBBF24;
+  transform: scale(1.15);
+}
+.brief-bookmark-btn.is-saved {
+  color: #FBBF24;
+}
+.lead-badge-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* ===== 响应式 ===== */
