@@ -76,6 +76,15 @@ const FEEDS_GENERAL = [
 // [AI 前沿] - 大模型、人工智能、智能体
 const FEEDS_AI = [
   {
+    url: 'https://hotai.news/feed.xml',
+    name: 'HotAI 快讯', category: 'ai', hotScore: 90, lang: 'zh',
+    desc: '实时更新的人工智能新闻',
+    urlBackup: [
+      'https://hotai.news/news-report.json',
+      'https://hotai.news/news/'
+    ]
+  },
+  {
     url: 'https://www.jiqizhixin.com/rss',
     name: '机器之心', category: 'ai', hotScore: 88, lang: 'zh',
     desc: '全球人工智能信息服务'
@@ -304,12 +313,20 @@ const HOT_SEARCH_SOURCES = [
  * 带超时的 fetch 封装（防止单个源卡死阻塞全部采集）
  */
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const doFetch = async () => {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), timeoutMs)
+        try {
+            return await fetch(url, { ...options, signal: controller.signal })
+        } finally {
+            clearTimeout(timer)
+        }
+    }
     try {
-        return await fetch(url, { ...options, signal: controller.signal })
-    } finally {
-        clearTimeout(timer)
+        return await doFetch()
+    } catch (err) {
+        // 遭遇短暂网络抖动或连接重置时轻量重试一次
+        return await doFetch()
     }
 }
 
@@ -609,9 +626,20 @@ export async function collectSingleSource(env, feed, options = {}) {
 
     log.push(`[${feed.category}] ${feed.name}`);
 
-    const urlsToTry = (feed.urlBackup && feed.urlBackup.length > 0)
+    // 智能源 URL 适配：针对已知源（如 hotai.news）自动补充真实 feed 与数据源地址
+    const rawUrls = (feed.urlBackup && feed.urlBackup.length > 0)
         ? [feed.url, ...feed.urlBackup]
         : [feed.url];
+    const expandedUrls = [];
+    for (const u of rawUrls) {
+        if (!u) continue;
+        if (/^https?:\/\/hotai\.news(\/news\/?|\/?)$/i.test(u.trim())) {
+            expandedUrls.push('https://hotai.news/feed.xml');
+            expandedUrls.push('https://hotai.news/news-report.json');
+        }
+        expandedUrls.push(u);
+    }
+    const urlsToTry = Array.from(new Set(expandedUrls));
     let response, lastError = null;
 
     for (const url of urlsToTry) {
@@ -632,15 +660,34 @@ export async function collectSingleSource(env, feed, options = {}) {
         return { collected, logs: log };
     }
 
-    const xmlText = await response.text();
-    const items = parseRSSItems(xmlText);
+    const rawText = await response.text();
+    let items = [];
+
+    // 适配 JSON 格式资讯源（如 hotai news-report.json 等）
+    if (rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
+        try {
+            const data = JSON.parse(rawText);
+            const list = Array.isArray(data) ? data : (data.items || []);
+            items = list.map(item => ({
+                title: cleanPlainText(item.title || ''),
+                link: item.url || (item.sources?.[0]?.url) || (item.route ? `https://hotai.news${item.route}` : ''),
+                description: item.summary || item.description || ''
+            })).filter(it => it.title && it.link);
+        } catch (e) {
+            log.push(`  ⚠ JSON 解析失败: ${e.message}`);
+        }
+    } else {
+        const rawItems = parseRSSItems(rawText);
+        for (const it of rawItems) {
+            const fields = extractItemFields(it);
+            if (fields) items.push(fields);
+        }
+    }
+
     log.push(`  · 解析 ${items.length} 条`);
 
-    for (const itemContent of items) {
-        const fields = extractItemFields(itemContent);
-        if (!fields) continue;
-        const { title, link, description } = fields;
-
+    for (const item of items) {
+        const { title, link, description } = item;
         const markdownDesc = htmlToMarkdown(description);
 
         if (feed.category !== 'dev' && feed.category !== 'ai') {
@@ -720,6 +767,13 @@ export async function collectNews(env, onNewPost) {
 
   // 加载所有硬编码源
   const allFeeds = [...ALL_FEEDS];
+
+  // 确保数据库 sources 表中同步包含最新的预设源（如 HotAI 快讯）
+  try {
+    await db.seedDefaultSources(ALL_FEEDS);
+  } catch (e) {
+    // 忽略种子化错误
+  }
 
   // 从数据库加载动态源并合并（同名源以数据库配置覆盖硬编码）
   try {

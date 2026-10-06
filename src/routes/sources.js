@@ -10,18 +10,27 @@ function getDb(c) {
     return new Database(c.env)
 }
 
-// ========== 获取所有源（首次自动种子化预设源） ==========
+// 智能源 URL 规范化（若用户输入普通页面 URL 如 hotai.news/news/，自动补全 Feed 与备用数据源）
+function normalizeSourceInput(url, urlBackup = []) {
+    let finalUrl = (url || '').trim()
+    let backups = Array.isArray(urlBackup) ? [...urlBackup] : []
+    if (/^https?:\/\/hotai\.news(\/news\/?|\/?)$/i.test(finalUrl)) {
+        if (!backups.includes(finalUrl)) backups.push(finalUrl)
+        if (!backups.includes('https://hotai.news/news-report.json')) backups.unshift('https://hotai.news/news-report.json')
+        finalUrl = 'https://hotai.news/feed.xml'
+    }
+    return { url: finalUrl, urlBackup: Array.from(new Set(backups)) }
+}
+
+// ========== 获取所有源（自动增量同步预设源） ==========
 // 注：此接口仅管理员访问，不缓存（避免 auth 信息泄漏）
 sources.get('/', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
 
     const db = getDb(c)
-    // 首次访问时自动将硬编码的预设源导入数据库
-    const count = await db.getSourceCount()
-    if (count === 0) {
-        await db.seedDefaultSources(ALL_FEEDS)
-    }
+    // 自动将硬编码的预设源增量同步到数据库（INSERT OR IGNORE 保证幂等）
+    await db.seedDefaultSources(ALL_FEEDS)
     const list = await db.findAllSources()
     // 解析 url_backup JSON
     const parsed = list.map(s => ({
@@ -51,8 +60,13 @@ sources.post('/', async (c) => {
     const user = await getUser(c)
     if (!user || user.role !== 'admin') return c.json({ error: '无权限' }, 403)
 
-    const { url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder } = await c.req.json()
+    const body = await c.req.json()
+    let { url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder } = body
     if (!url || !name) return c.json({ error: 'URL 和名称为必填项' }, 400)
+
+    const normalized = normalizeSourceInput(url, urlBackup)
+    url = normalized.url
+    urlBackup = normalized.urlBackup
 
     const db = getDb(c)
     const id = await db.createSource({ url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder })
@@ -69,8 +83,13 @@ sources.put('/:id', async (c) => {
     const source = await getDb(c).findSourceById(id)
     if (!source) return c.json({ error: '源不存在' }, 404)
 
-    const { url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder } = await c.req.json()
+    const body = await c.req.json()
+    let { url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder } = body
     if (!url || !name) return c.json({ error: 'URL 和名称为必填项' }, 400)
+
+    const normalized = normalizeSourceInput(url, urlBackup)
+    url = normalized.url
+    urlBackup = normalized.urlBackup
 
     const db = getDb(c)
     await db.updateSource(id, { url, name, category, hotScore, lang, description, urlBackup, isActive, sortOrder })

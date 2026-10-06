@@ -7,28 +7,39 @@ const instances = [
 const route = '/36kr/motif/3276897824862212';
 
 async function test(u) {
-  try {
-    const resp = await fetch(u, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 PanoramaCollector/2.0',
-        'Accept': 'application/xml, text/xml, application/json, */*'
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const resp = await fetch(u, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 PanoramaCollector/2.0',
+          'Accept': 'application/xml, text/xml, application/json, */*'
+        }
+      });
+      const text = await resp.text();
+      if (resp.status === 200 && (text.includes('<title>') || text.includes('"title"') || text.includes('"items"'))) {
+        console.log(`[SUCCESS] ${u} : ${text.length} bytes`);
+        return;
+      } else {
+        console.log(`[FAILED] ${u} : HTTP ${resp.status}`);
+        return;
       }
-    });
-    const text = await resp.text();
-    if (resp.status === 200 && text.includes('<title>')) {
-      console.log(`[SUCCESS] ${u} : ${text.length} bytes`);
-    } else {
-      console.log(`[FAILED] ${u} : HTTP ${resp.status}`);
+    } catch (e) {
+      if (attempt === 3) {
+        console.log(`[ERROR] ${u} : ${e.code || e.message}`);
+      }
     }
-  } catch (e) {
-    console.log(`[ERROR] ${u} : ${e.code || e.message}`);
   }
 }
 
 async function main() {
+  console.log('--- 测试 36kr RSSHub 镜像 ---');
   for (const host of instances) {
     await test(host + route);
   }
+
+  console.log('\n--- 测试 HotAI 快讯 源 ---');
+  await test('https://hotai.news/feed.xml');
+  await test('https://hotai.news/news-report.json');
 }
 
 main();
